@@ -1,0 +1,9 @@
+gripper_sym_rod:
+  act_len: 15
+  grip_min: 0.001
+  init_grip: 0.04
+  init_h: 0.18
+  rot_range:
+  - -1.5707963267948966
+  - 1.5707963267948966
+  rot_scope: 3.141592653589793
