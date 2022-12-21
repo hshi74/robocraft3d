@@ -4,6 +4,7 @@ import numpy as np
 import open3d as o3d
 import os
 import random
+import rosbag
 import sys
 import torch
 
@@ -482,3 +483,29 @@ def inplace_relu(m):
     classname = m.__class__.__name__
     if classname.find('ReLU') != -1:
         m.inplace=True
+
+
+def read_ros_bag(bag_path):
+    pcd_msgs = []
+    while True:
+        try:
+            bag = rosbag.Bag(bag_path) # allow_unindexed=True
+            break
+        except rosbag.bag.ROSBagUnindexedException:
+            print('Reindex the rosbag file:')
+            os.system(f"rosbag reindex {bag_path}")
+            bag_orig_path = os.path.join(os.path.dirname(bag_path), 'pcd.orig.bag') 
+            os.system(f"rm {bag_orig_path}")
+        except rosbag.bag.ROSBagException:
+            continue
+
+    for topic, msg, t in bag.read_messages(
+        topics=['/cam1/depth/color/points', '/cam2/depth/color/points', '/cam3/depth/color/points', '/cam4/depth/color/points', 
+        '/ee_pose', '/gripper_width']
+    ):
+        if 'cam' in topic:
+            pcd_msgs.append(msg)
+
+    bag.close()
+
+    retrun pcd_msgs

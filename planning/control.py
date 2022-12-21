@@ -11,9 +11,6 @@ import yaml
 
 torch.set_printoptions(sci_mode=False)
 
-from planning.pcd_tool_classifier.build_dataset import process_pcd
-from planning.pcd_tool_classifier.classifier import PcdClassifer
-from planning.image_tool_classifier.classifier import ImageClassifer
 from control_utils import *
 from datetime import datetime
 from std_msgs.msg import UInt8
@@ -81,106 +78,58 @@ for dir in ['states', 'raw_data']:
 class MPController(object):
     def __init__(self):
         self.get_target_shapes()
-        self.load_tools()
-        if 'image' in args.cls_type:
-            self.classifier = ImageClassifer(args)
-        else:
-            self.classifier = PcdClassifer(args)
+        self.load_tool()
 
 
     def get_target_shapes(self):
+        target = os.path.basename(args.target_shape_name)
         target_dir = os.path.join(cd, '..', 'target_shapes', args.target_shape_name)
+
         if 'sim' in args.target_shape_name:
-            target_list = [os.path.basename(args.target_shape_name)]
+            prefix = target
         else:
-            target_list = sorted([d.name for d in os.scandir(target_dir) if d.is_dir()])[1:]
+            prefix = f"{target}/{target.split('_')[0]}"
 
-        self.target_shapes = []
-        for target in target_list:
-            if 'sim' in args.target_shape_name:
-                prefix = target
+        target_shape = {}
+        for type in ['sparse', 'dense', 'surf']:
+            if type == 'sparse':
+                target_frame_path = os.path.join(target_dir, f'{prefix}.h5')
             else:
-                prefix = f"{target}/{target.split('_')[0]}"
+                target_frame_path = os.path.join(target_dir, f'{prefix}_{type}.h5')
 
-            target_shape = {}
-            target_shape['label'] = '_'.join(target.split('_')[1:])
-            for type in ['sparse', 'dense', 'surf']:
-                if type == 'sparse':
-                    target_frame_path = os.path.join(target_dir, f'{prefix}.h5')
-                else:
-                    target_frame_path = os.path.join(target_dir, f'{prefix}_{type}.h5')
+            if os.path.exists(target_frame_path):
+                target_data = load_data(args.data_names, target_frame_path)
+                target_shape[type] = target_data[0]
 
-                if os.path.exists(target_frame_path):
-                    target_data = load_data(args.data_names, target_frame_path)
-                    target_shape[type] = target_data[0]
-
-            raw_pcd_path = os.path.join(target_dir, f'{prefix}_raw.ply')
-            if os.path.exists(raw_pcd_path):
-                target_shape['raw_pcd'] = o3d.io.read_point_cloud(raw_pcd_path)
-
-            if not 'sim' in args.target_shape_name:
-                image_paths = [os.path.join(target_dir, target, f"{target.split('_')[0]}_cam_{x+1}.png") for x in range(4)]
-                target_shape['images'] = image_paths
-
-            self.target_shapes.append(target_shape)
+        self.target_shape = target_shape
 
 
-    def load_tools(self):
-        self.tool_name_list = args.tool_name_list
-        if args.active_tool_list == 'default':
-            self.active_tool_name_list = self.tool_name_list
+    def load_tool(self, tool_name='gripper_sym_rod'):
+        with open('config/plan_params.yml', 'r') as f:
+            plan_params = yaml.load(f, Loader=yaml.FullLoader)
+
+        with open('config/model_map.yml', 'r') as f:
+            model_dict = yaml.load(f, Loader=yaml.FullLoader)
+
+        if 'sim' in args.planner_type:
+            model_path_list = None
         else:
-            self.active_tool_name_list = args.active_tool_list.split('+')
-
-        if 'dumpling' in args.target_shape_name:
-            self.active_tool_name_list = [
-                'cutter_circular', 'cutter_planar', 'gripper_sym_plane',
-                'hook', 'press_square', 'pusher', 'roller_large', 'spatula_large', 'spatula_small'
-            ]
-        elif 'alphabet' in args.target_shape_name:
-            self.active_tool_name_list = [
-                'gripper_asym', 'gripper_sym_plane', 'gripper_sym_rod', 'punch_circle', 'punch_square'
-            ]
-        else:
-            raise NotImplementedError
-
-        print(f'[INFO] The active tool list is: {self.active_tool_name_list}')
-
-        with open('config/tool_plan_params.yml', 'r') as f:
-            tool_params = yaml.load(f, Loader=yaml.FullLoader)
-
-        with open('config/tool_model_map.yml', 'r') as f:
-            tool_model_dict = yaml.load(f, Loader=yaml.FullLoader)
-
-        self.active_tool_dict = {}
-        for tool_name in self.active_tool_name_list:
-            if tool_name in args.precoded_tool_list:
-                tool = Tool(args, tool_name, 'precoded')
+            tool_model_names = model_dict[args.planner_type][tool_name]
+            if isinstance(tool_model_names, list):
+                model_path_list = []
+                for tool_model_name in tool_model_names:
+                    model_path_list.append(os.path.join(cd, '..', 'models', args.planner_type, tool_model_name))
             else:
-                if 'sim' in args.planner_type:
-                    tool_model_path_list = None
-                else:
-                    tool_model_names = tool_model_dict[args.planner_type][tool_name]
-                    if isinstance(tool_model_names, list):
-                        tool_model_path_list = []
-                        for tool_model_name in tool_model_names:
-                            tool_model_path_list.append(os.path.join(cd, '..', 'models', args.planner_type, tool_model_name))
-                    else:
-                        tool_model_path_list = [os.path.join(cd, '..', 'models', args.planner_type, tool_model_names)]
-                tool = Tool(args, tool_name, args.planner_type, tool_params[tool_name], tool_model_path_list)
-
-            self.active_tool_dict[tool_name] = tool
+                model_path_list = [os.path.join(cd, '..', 'models', args.planner_type, tool_model_names)]
+        self.tool = Tool(args, tool_name, args.planner_type, plan_params[tool_name], model_path_list)
 
 
-    def get_state_from_ros(self, tool_name, ros_data_path, rgb=True):
+    def get_state_from_ros(self, ros_data_path):
         command_time = datetime.now().strftime("%b-%d-%H:%M:%S")
         ros_pcd_path_prefix = os.path.join(ros_data_path, command_time)
         rate = rospy.Rate(100)
         while not rospy.is_shutdown():
-            if rgb:
-                self.command_pub.publish((String(f'{command_time}.shoot.pcd+rgb')))
-            else:
-                self.command_pub.publish((String(f'{command_time}.shoot.pcd')))
+            self.command_pub.publish((String(f'{command_time}.shoot.pcd')))
             
             self.ros_data_path_pub.publish(String(ros_pcd_path_prefix))
             if os.path.exists(ros_pcd_path_prefix + '.bag'):
@@ -189,22 +138,14 @@ class MPController(object):
 
             rate.sleep()
 
-        vis_args = copy.deepcopy(args)
-        vis_args.env = tool_name
-        state_cur_pcd = process_pcd(vis_args, ros_pcd_path_prefix + '.bag', visualize=False)
-        pcd_dense, pcd_sparse, state_cur = ros_bag_to_pcd(vis_args, ros_pcd_path_prefix + '.bag', visualize=False)
+        pcd_dense, pcd_sparse, state_cur = ros_bag_to_pcd(args, ros_pcd_path_prefix + '.bag', visualize=False)
         
         state_cur_dict = {
-            'raw_pcd': state_cur_pcd,
             'tensor': torch.tensor(state_cur[:args.n_particles], 
                 device=args.device, dtype=torch.float32).unsqueeze(0),
             'dense': torch.tensor(np.asarray(pcd_dense.points), 
                 device=args.device, dtype=torch.float32).unsqueeze(0),
         }
-
-        if rgb:
-            ros_image_paths = [f'{ros_pcd_path_prefix}_cam_{x+1}.png' for x in range(4)]
-            state_cur_dict['images'] = ros_image_paths
 
         return state_cur_dict
 
@@ -225,193 +166,49 @@ class MPController(object):
             init_state_path = os.path.join(target_dir, name, f'{name}.h5')
             dense_init_state_path = os.path.join(target_dir, name, f'{name}_dense.h5')
             surf_init_state_path = os.path.join(target_dir, name, f'{name}_surf.h5')
-            raw_pcd_path = os.path.join(target_dir, name, f'{name}_raw.ply')
 
             init_state_data = load_data(args.data_names, init_state_path)
             dense_init_state_data = load_data(args.data_names, dense_init_state_path)
             surf_init_state_data = load_data(args.data_names, surf_init_state_path)
-            raw_pcd = o3d.io.read_point_cloud(raw_pcd_path)
-
-            image_paths = [os.path.join(target_dir, name, f'{name}_cam_{x+1}.png') for x in range(4)]
 
             init_state = {
                 'sparse': init_state_data[0], 
                 'dense': dense_init_state_data[0],
-                'surf': surf_init_state_data[0],
-                'images': image_paths,
-                'raw_pcd': raw_pcd
+                'surf': surf_init_state_data[0]
             }
 
             state_init_dict = {
                 'tensor': torch.tensor(init_state['surf'][:args.n_particles], 
                     device=args.device, dtype=torch.float32).unsqueeze(0),
-                'images': init_state['images'],
-                'raw_pcd': init_state['raw_pcd'],
                 'dense': torch.tensor(init_state['dense'][:-args.floor_dim],
                     device=args.device, dtype=torch.float32).unsqueeze(0),
             }
 
-        tool_list = []
-        param_seq_dict = {}
-        state_seq_list = []
-        info_dict_list = []
-        loss_dict = {'Chamfer': [], 'EMD': [], 'IOU': []}
-        state_cur_dict = state_init_dict
-        step = 0
-        while True:
-            # if no subtarget, always use the last target as target
-            # chamfer_loss, emd_loss, iou_loss = self.eval_state(state_cur_dict['tensor'].cpu(), step, plan_target_idx)
 
-            # loss_dict['Chamfer'].append(round(chamfer_loss, 4))
-            # loss_dict['EMD'].append(round(emd_loss, 4))
-            # loss_dict['IOU'].append(round(iou_loss, 4))
+        for dir in ['param_seqs', 'anim', 'anim_args', 'states', 'optim_plots', 'raw_data']:
+            os.system('mkdir -p ' + os.path.join(rollout_root, dir))
 
-            # if (args.subtarget or not args.close_loop) and 
-            # if step == len(self.target_shapes): break
+        # plan the actions given the tool
+        param_seq, state_seq, info_dict, state_cur_dict = self.plan(state_init_dict, rollout_root)
 
-            print(f"{bcolors.HEADER}{'#'*30} STEP {step} {'#'*30}{bcolors.ENDC}")
-            step_folder_name = f'{str(step).zfill(3)}'
-            rollout_path = os.path.join(rollout_root, step_folder_name)
-            for dir in ['param_seqs', 'anim', 'anim_args', 'states', 'optim_plots', 'raw_data', 'cls_plots']:
-                os.system('mkdir -p ' + os.path.join(rollout_path, dir))
-
-            # classify which tool to use
-            cls_target_idx = step if args.subtarget else len(self.target_shapes) - 1
-            tools_pred = self.classify(state_cur_dict, cls_target_idx, rollout_path)
-            # tools_pred = ['roller_large']
-            
-            # plan the actions given the tool
-            tool_name, param_seq, state_seq, info_dict, state_cur_dict = self.plan(
-                tools_pred, state_cur_dict, step, rollout_path)
-
-            tool_list.append(tool_name)
-            param_seq_dict[f'{step}-{tool_name}'] = param_seq.tolist()
-            state_seq_list.append(state_seq)
-            info_dict_list.append(info_dict)
-
-            print(f"{'#'*24} SUMMARY OF STEP {step} {'#'*25}")
-            print(f"USE {tool_name.upper()}: \n{param_seq}")
-            print(f"LOSS AFTER STEP {step}: {info_dict['loss'][-1]}")
-
-            # use 0.01 as the threshold
-            if not args.close_loop or info_dict['loss'][-1] < 0.015: 
-                step += 1
-
-            if ('dumpling' in args.target_shape_name and info_dict['loss'][-1] == 0.0) or \
-                (not 'dumpling' in args.target_shape_name and step == len(self.target_shapes)):
-                print("ALL DONE!!!")
-                break
-
-            # if args.close_loop:
-            #     ros_data_path = os.path.join(rollout_root, 'raw_data')
-            #     state_cur_dict = self.get_state_from_ros(args, ros_data_path)
-            # else:
-            #     state_cur_dict['tensor'] = torch.tensor(state_seq[-1][:args.n_particles], 
-            #         device=args.device, dtype=torch.float32).unsqueeze(0)
-            #     state_cur_dict['images'] = self.target_shapes[step]['images']
+        self.summary([param_seq, state_seq, info_dict, state_cur_dict])
 
 
-        data = [tool_list, loss_dict, param_seq_dict, state_seq_list, info_dict_list]
-        self.summary(data)
-
-
-    def classify(self, state_cur_dict, target_idx, rollout_path):
-        tools_pred = self.classifier.eval(state_cur_dict, self.target_shapes[target_idx], 
-            path=os.path.join(rollout_path, 'cls_plots'))
-
-        print(f'[OUT] The classifier predicts that we should use: {tools_pred}')
-
-        # augment the predictions with tools from the same family
-        # tools_pred_aug = []
-        # for tool_name in tools_pred:
-        #     if 'gripper' in tool_name:
-        #         tools_pred_aug.extend(['gripper_asym', 'gripper_sym_plane', 'gripper_sym_rod'])
-        #     elif 'press' in tool_name or 'punch' in tool_name:
-        #         if 'large' in tool_name:
-        #             tools_pred_aug.extend(['press_square', 'press_circle'])
-        #         else:
-        #             tools_pred_aug.extend(['punch_square', 'punch_circle'])
-        #     elif 'roller' in tool_name:
-        #         tools_pred_aug.extend(['roller_large', 'roller_small'])
-        #     else:
-        #         tools_pred_aug.append(tool_name)
-
-        # if len(tools_pred_aug) > len(tools_pred):
-        #     print(f'[OUT] But we should try: {tools_pred_aug}')
-
-        return tools_pred
-
-
-    def execute(self, tool_name, param_seq):
-        print(f"Executing {tool_name.upper()}...")
-        # tool = self.active_tool_dict[tool_name]
-        # if 'gripper' in tool_name:
-        #     param_seq_temp = []
-        #     for i in range(param_seq.shape[0]):
-        #         param_seq_temp.append(np.concatenate((tool.planner.center.numpy()[:2], param_seq[i])))
-        #     param_seq = np.array(param_seq_temp)
+    def execute(self, param_seq):
+        print(f"Executing...")
         self.param_seq_pub.publish(param_seq.flatten().astype(np.float32))
         command_time = datetime.now().strftime("%b-%d-%H:%M:%S")
-        self.command_pub.publish(String(f'{command_time}.run.{tool_name}'))
+        self.command_pub.publish(String(f'{command_time}.run'))
 
 
-    def plan(self, tools_pred, state_cur_dict, step, rollout_path):
+    def plan(self, state_cur_dict, rollout_path, max_n_actions=5, pred_err_bar=0.02):
         global command_feedback
 
-        target_idx_list = []
-        for tool_name in tools_pred:
-            if args.subtarget:
-                target_idx = step
-            else:
-                target_idx = -1
-                for i in range(len(self.target_shapes)):
-                    if self.target_shapes[i]['label'] == tool_name:
-                        target_idx = i
-                        break
-            target_idx_list.append(target_idx)
-
-        target_idx_max = max(target_idx_list)
-        for i in range(len(target_idx_list)):
-            if target_idx_list[i] == -1:
-                target_idx_list[i] = target_idx_max
-
-        best_target_idx = 0
-        best_loss = float('inf')
-        for tool_name, target_idx in zip(tools_pred, target_idx_list):
-            # if not 'roller' in tool_name:
-            #     continue
-
-            if not tool_name in self.active_tool_name_list:
-                print(f"{bcolors.WARNING}[WARNING] {tool_name} is inactive!{bcolors.ENDC}")
-                continue
-
-            print(f"{'#'*15} {tool_name.upper()} {'#'*15}")
-            if tool_name in args.precoded_tool_list:
-                rs_loss_threshold = float('inf')
-            else:
-                rs_loss_threshold = best_loss + 0.001
-
-            param_seq, state_seq, info_dict = self.active_tool_dict[tool_name].rollout(
-                state_cur_dict, self.target_shapes[target_idx], rollout_path, 
-                args.max_n_actions, rs_loss_threshold=rs_loss_threshold
-            )
-
-            loss_weighted = info_dict['loss'][-1] / (target_idx + 1)
-            print(f'The weighted loss of {tool_name} is {loss_weighted}!')
-            if loss_weighted < best_loss:
-                best_tool_name = tool_name
-                best_target_idx = target_idx
-                best_param_seq = param_seq
-                best_state_seq = state_seq
-                best_info_dict = info_dict
-                best_loss = loss_weighted
+        param_seq, state_seq, info_dict = self.tool.rollout(
+            state_cur_dict, self.target_shape, rollout_path, args.max_n_actions
+        )
 
         if args.close_loop:
-            # print(param_seq.shape, state_seq.shape)
-            param_seq = best_param_seq
-            state_seq = best_state_seq
-            info_dict = best_info_dict
-
             act_len = state_seq.shape[0] // param_seq.shape[0]
             act_start = 0
             act_end = 1
@@ -422,17 +219,10 @@ class MPController(object):
                 dtype=torch.float32).unsqueeze(0)
             info_dict_pred = info_dict
 
-            if 'roller' in best_tool_name:
-                max_n_actions = 5
-                pred_err_bar = 0.05
-            else:
-                max_n_actions = 4
-                pred_err_bar = 0.02
-
             ros_data_path = os.path.join(rollout_path, 'raw_data')
             # loss_dict = {'Chamfer': [], 'EMD': [], 'IOU': []}
             while not rospy.is_shutdown():
-                self.execute(best_tool_name, param_seq_todo)
+                self.execute(param_seq_todo)
 
                 while command_feedback != 1:
                     continue
@@ -442,12 +232,14 @@ class MPController(object):
                 print('Waiting for disturbance... Press enter when you finish...')
                 readchar.readkey()
                 
-                state_cur_dict = self.get_state_from_ros(best_tool_name, ros_data_path)
+                state_cur_dict = self.get_state_from_ros(ros_data_path)
 
                 pred_err = chamfer(state_cur_dict['tensor'].squeeze(), state_pred_tensor.squeeze(), pkg='torch')
                 print(f"The prediction error is {pred_err}!")
                 # chamfer_loss, emd_loss = self.eval_state(state_cur_dict['tensor'].cpu(), 
                 #     step, best_target_idx, state_pred=state_pred_tensor.cpu(), pred_err=pred_err)
+            
+                # UP TO HERE
 
                 if not best_tool_name in args.precoded_tool_list and param_seq_pred.shape[0] < max_n_actions:
                     # TODO: Need to tune this number
