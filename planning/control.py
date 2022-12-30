@@ -77,11 +77,11 @@ for dir in ['states', 'raw_data']:
 
 class MPController(object):
     def __init__(self):
-        self.get_target_shapes()
+        self.get_target_shape()
         self.load_tool()
 
 
-    def get_target_shapes(self):
+    def get_target_shape(self):
         target = os.path.basename(args.target_shape_name)
         target_dir = os.path.join(cd, '..', 'target_shapes', args.target_shape_name)
 
@@ -184,14 +184,48 @@ class MPController(object):
                     device=args.device, dtype=torch.float32).unsqueeze(0),
             }
 
-
         for dir in ['param_seqs', 'anim', 'anim_args', 'states', 'optim_plots', 'raw_data']:
             os.system('mkdir -p ' + os.path.join(rollout_root, dir))
 
         # plan the actions given the tool
-        param_seq, state_seq, info_dict, state_cur_dict = self.plan(state_init_dict, rollout_root)
+        param_seq, state_seq, info_dict = self.plan(state_init_dict, rollout_root)
 
-        self.summary([param_seq, state_seq, info_dict, state_cur_dict])
+        print(f"{'#'*27} MPC SUMMARY {'#'*28}")
+        print(param_seq)
+        
+        if args.close_loop:
+            state_cur_dict = self.get_state_from_ros(os.path.join(rollout_root, 'raw_data'))
+            state_cur = state_cur_dict['tensor'].squeeze().cpu().numpy()
+        else:
+            state_cur = state_seq[-1, :args.n_particles]
+
+        state_cur_norm = state_cur - np.mean(state_cur, axis=0)
+        state_goal = self.target_shape['surf']
+        state_goal_norm = state_goal - np.mean(state_goal, axis=0)
+        dist_final = chamfer(state_cur_norm, state_goal_norm, pkg='numpy')
+        print(f'FINAL chamfer distance: {dist_final}')
+
+        with open(os.path.join(rollout_root, 'planning_time.txt'), 'r') as f:
+            print(f'TOTAL planning time (s): {f.read()}')
+
+        with open(os.path.join(rollout_root, f'MPC_param_seq.yml'), 'w') as f:
+            yaml.dump(param_seq, f, default_flow_style=True)
+
+        for p in info_dict['subprocess']:
+            p.communicate()
+
+        anim_list_path = os.path.join(rollout_root, f'anim_list.txt')
+        with open(anim_list_path, 'w') as f:
+            anim_path_list = sorted(glob.glob(os.path.join(rollout_root, 'anim', '*.mp4')))
+            for anim_path in anim_path_list:
+                anim_name = os.path.basename(anim_path)
+                if not 'RS' in anim_name and not 'CEM' in anim_name \
+                    and not 'GD' in anim_name and not 'sim' in anim_name:
+                    f.write(f"file '{anim_path}'\n")
+
+        mpc_anim_path = os.path.join(rollout_root, f'MPC_anim.mp4')
+        subprocess.run(['ffmpeg', '-f', 'concat', '-safe', '0', '-i', anim_list_path, '-c', 'copy', mpc_anim_path], 
+            stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
 
 
     def execute(self, param_seq):
@@ -238,28 +272,20 @@ class MPController(object):
                 print(f"The prediction error is {pred_err}!")
                 # chamfer_loss, emd_loss = self.eval_state(state_cur_dict['tensor'].cpu(), 
                 #     step, best_target_idx, state_pred=state_pred_tensor.cpu(), pred_err=pred_err)
-            
-                # UP TO HERE
 
-                if not best_tool_name in args.precoded_tool_list and param_seq_pred.shape[0] < max_n_actions:
+                if param_seq_pred.shape[0] < max_n_actions:
                     # TODO: Need to tune this number
                     if pred_err > 0 and pred_err < pred_err_bar:
                         print(f"The prediction is good enough!")
                         if act_end < param_seq.shape[0]:
                             # move to the next action
                             act_start = act_end
-                        elif 'roller' in best_tool_name:
-                            param_seq, state_seq, info_dict = self.active_tool_dict[best_tool_name].rollout(
-                                state_cur_dict, self.target_shapes[best_target_idx], rollout_path, 
-                                min(max_n_actions - param_seq_pred.shape[0], args.max_n_actions)
-                            )
-                            act_start = 0
                         else:
                             break
                     else:
                         # figure out a new solution
-                        param_seq, state_seq, info_dict = self.active_tool_dict[best_tool_name].rollout(
-                            state_cur_dict, self.target_shapes[best_target_idx], rollout_path, 
+                        param_seq, state_seq, info_dict = self.tool.rollout(
+                            state_cur_dict, self.target_shape, rollout_path, 
                             min(max_n_actions - param_seq_pred.shape[0], args.max_n_actions)
                         )
                         act_start = 0
@@ -283,89 +309,8 @@ class MPController(object):
         else:
             state_cur_dict['tensor'] = torch.tensor(best_state_seq[-1][:args.n_particles], 
                 device=args.device, dtype=torch.float32).unsqueeze(0)
-            # state_cur_dict['tensor'] = torch.tensor(self.target_shapes[step]['surf'], 
-            #     device=args.device, dtype=torch.float32).unsqueeze(0)
-            state_cur_dict['images'] = self.target_shapes[step]['images']
-            state_cur_dict['raw_pcd'] = self.target_shapes[step]['raw_pcd']
 
-        return best_tool_name, best_param_seq, best_state_seq, best_info_dict, state_cur_dict
-
-
-    # def eval_state(self, state_cur, step, target_idx, state_pred=None, pred_err=0):
-    #     target_idx = min(target_idx, len(self.target_shapes) - 1)
-    #     if args.surface_sample:
-    #         state_goal = torch.tensor(self.target_shapes[target_idx]['surf'], dtype=torch.float32).unsqueeze(0)
-    #     else:
-    #         state_goal = torch.tensor(self.target_shapes[target_idx]['sparse'], dtype=torch.float32).unsqueeze(0)
-
-    #     state_cur_norm, state_goal_norm = normalize_state(args, state_cur, state_goal, pkg='torch')
-
-    #     chamfer_loss = chamfer(state_cur_norm.squeeze(0), state_goal_norm.squeeze(0), pkg='torch')
-    #     emd_loss = emd(state_cur_norm.squeeze(0), state_goal_norm.squeeze(0), pkg='torch')
-
-    #     # state_cur_upsample = upsample(state_cur[0], visualize=False)
-    #     # iou_loss = 1 - iou(state_cur_upsample, self.target_shapes[target_idx]['dense'], voxel_size=0.003, visualize=False)
-    #     # iou_loss = torch.tensor([iou_loss], dtype=torch.float32)
-
-    #     if state_pred is not None:
-    #         state_pred_norm = (state_pred - torch.mean(state_pred, dim=1)) / torch.std(state_pred, dim=1)
-    #         render_frames(args, [f'State', f'State Pred={round(pred_err.item(), 6)}', 'State Normalized', 'State Pred Normalized'], 
-    #             [state_cur, state_pred, state_cur_norm, state_pred_norm], 
-    #             axis_off=False, focus=[True, True, False, False], 
-    #             target=[state_goal, state_goal, state_goal_norm, state_goal_norm], 
-    #             path=os.path.join(rollout_root, 'states'), 
-    #             name=f"state_{step}.png")
-    #     else:
-    #         render_frames(args, [f'State', 'State Normalized'], 
-    #             [state_cur, state_cur_norm], axis_off=False, focus=[True, False], 
-    #             target=[state_goal, state_goal_norm], path=os.path.join(rollout_root, 'states'), 
-    #             name=f"state_{step}.png")
-
-    #     return chamfer_loss.item(), emd_loss.item() # , iou_loss.item()
-
-
-    def summary(self, data):
-        tool_list, loss_dict, param_seq_dict, state_seq_list, info_dict_list = data
-
-        print(f"{'#'*27} MPC SUMMARY {'#'*28}")
-        for key, value in param_seq_dict.items():
-            print(f"{key}: {value}")
-        
-        if args.close_loop:
-            state_cur_dict = self.get_state_from_ros(tool_list[-1], os.path.join(rollout_root, 'raw_data'))
-            state_cur = state_cur_dict['tensor'].squeeze().cpu().numpy()
-        else:
-            state_cur = state_seq_list[-1][-1, :args.n_particles]
-
-        state_cur_norm = state_cur - np.mean(state_cur, axis=0)
-        state_goal = self.target_shapes[-1]['surf']
-        state_goal_norm = state_goal - np.mean(state_goal, axis=0)
-        dist_final = chamfer(state_cur_norm, state_goal_norm, pkg='numpy')
-        print(f'FINAL chamfer distance: {dist_final}')
-
-        with open(os.path.join(rollout_root, 'planning_time.txt'), 'r') as f:
-            print(f'TOTAL planning time (s): {f.read()}')
-
-        with open(os.path.join(rollout_root, f'MPC_param_seq.yml'), 'w') as f:
-            yaml.dump(param_seq_dict, f, default_flow_style=True)
-
-        for info_dict in info_dict_list:
-            for p in info_dict['subprocess']:
-                p.communicate()
-
-        anim_list_path = os.path.join(rollout_root, f'anim_list.txt')
-        with open(anim_list_path, 'w') as f:
-            for i, tool in enumerate(tool_list):
-                anim_path_list = sorted(glob.glob(os.path.join(rollout_root, str(i).zfill(3), 'anim', '*.mp4')))
-                for anim_path in anim_path_list:
-                    anim_name = os.path.basename(anim_path)
-                    if tool in anim_name and not 'RS' in anim_name and not 'CEM' in anim_name \
-                        and not 'GD' in anim_name and not 'sim' in anim_name:
-                        f.write(f"file '{anim_path}'\n")
-
-        mpc_anim_path = os.path.join(rollout_root, f'MPC_anim.mp4')
-        subprocess.run(['ffmpeg', '-f', 'concat', '-safe', '0', '-i', anim_list_path, '-c', 'copy', mpc_anim_path], 
-            stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
+        return best_param_seq, best_state_seq, best_info_dict
 
 
 def main():

@@ -6,7 +6,7 @@ import sys
 import torch
 import yaml
 
-from utils.data_utils import get_square, load_tools
+from utils.data_utils import get_square, load_tool_repr
 from datetime import datetime
 
 # build arguments
@@ -141,8 +141,8 @@ def gen_args_env(args):
     # traing output
     args.dy_out_path =  f'dump/dynamics/dump_{args.tool_type}'
     # ROS package
-    args.ros_pkg_path = "/scr/hshi74/catkin_ws/src/robocook_ros"
-    # args.ros_pkg_path = "/home/haochen/catkin_ws/src/robocook_ros"
+    # args.ros_pkg_path = "/scr/hshi74/catkin_ws/src/robocook_ros"
+    args.ros_pkg_path = "/home/haochen/catkin_ws/src/robocook_ros"
     # sim config file
     # args.sim_config_path = f'config/taichi_env/{args.env}.yml'
     # tool models
@@ -156,25 +156,6 @@ def gen_args_env(args):
         args.tool_type = tool_type_list[0].replace('_time_step', '')
     else:
         args.data_time_step = 1
-
-    if args.subtarget:
-        # pcd: classifier
-        args.tool_cls_model_path = f'models/{args.cls_type}_classifier/classifier_v1.1.pth'
-    else:
-        # image: classifier_final_v3.16_hsv.pth
-        if args.cls_type == 'pcd':
-            args.tool_cls_model_path = f'models/{args.cls_type}_classifier/classifier_v1.7.pth'
-        else:
-            args.tool_cls_model_path = f'models/{args.cls_type}_classifier/classifier_final_v3.16_hsv.pth'
-
-    args.tool_name_list = [
-        'cutter_circular', 'cutter_planar', 'gripper_asym', 'gripper_sym_plane', 'gripper_sym_rod',
-        'hook', 'press_circle', 'press_square', 'punch_circle', 'punch_square', 'pusher',
-        'roller_large', 'roller_small', 'spatula_large', 'spatula_small'
-    ]
-    args.precoded_tool_list = [
-        'pusher', 'cutter_planar', 'cutter_circular', 'spatula_small', 'spatula_large', 'hook'
-    ]
 
     ##### camera ######
     args.depth_optical_frame_pose = [0, 0, 0, 0.5, -0.5, 0.5, -0.5]
@@ -214,120 +195,44 @@ def gen_args_env(args):
 
     ##### tools #####
     args.tool_center = {
-        'gripper_asym': [np.array([0.019316, 0.001, 0.049337]), np.array([-0.016205, 0.001, 0.049337])],
         'gripper_sym_rod': [np.array([0.019316, 0.001, 0.049337]), np.array([-0.019316, 0.001, 0.049337])],
-        'gripper_sym_plane': [np.array([0.016205, 0.001, 0.049337]), np.array([-0.016205, 0.001, 0.049337])],
-        'roller_small': [np.array([0.0, 0.0, 0.089])],
-        'roller_large': [np.array([0.0, 0.0, 0.089])],
-        'press_square': [np.array([0.0, 0.0, 0.069])],
-        'press_circle': [np.array([0.0, 0.0, 0.069])],
-        'punch_square': [np.array([0.0, 0.0, 0.069])],
-        'punch_circle': [np.array([0.0, 0.0, 0.069])],
     }
 
     args.tool_geom_mapping = {
-        'gripper_asym': ['gripper_l', 'gripper_r_wall'],
         'gripper_sym_rod': ['gripper_l', 'gripper_r'],
-        'gripper_sym_plane': ['gripper_l_wall', 'gripper_r_wall'],
-        'roller_small': ['roller_small'],
-        'roller_large': ['roller_large'],
-        'press_square': ['press_square'],
-        'press_circle': ['press_circle'],
-        'punch_square': ['punch_square'],
-        'punch_circle': ['punch_circle'],
     }
 
     args.tool_sim_primitive_mapping = {
-        'gripper_asym': [0, 2],
         'gripper_sym_rod': [0, 1],
-        'gripper_sym_plane': [2, 3],
-        'punch_circle': [4],
-        'punch_square': [5],
     }
 
     args.tool_action_space_size = {
-        'gripper_asym': 3,
         'gripper_sym_rod': 3,
-        'gripper_sym_plane': 3,
-        'roller_small': 5,
-        'roller_large': 5,
-        'press_square': 4,
-        'press_circle': 4,
-        'punch_square': 4,
-        'punch_circle': 4,
     }
 
     if args.full_repr:
         args.tool_dim = {
-            'gripper_asym': [92, 234],
             'gripper_sym_rod': [92, 92],
-            'gripper_sym_plane': [234, 234],
-            'roller_small': [218],
-            'roller_large': [408],
-            'press_square': [184],
-            'press_circle': [184],
-            'punch_square': [56],
-            'punch_circle': [56],
         }
 
         args.tool_neighbor_radius_dict = {
-            'gripper_asym': [0.007, 0.007],
             'gripper_sym_rod': [0.005, 0.005],
-            'gripper_sym_plane': [0.007, 0.007],
-            'roller_small': [0.005],
-            'roller_large': [0.005],
-            'press_square': [0.006],
-            'press_circle': [0.006],
-            'punch_square': [0.004],
-            'punch_circle': [0.004],
         }
 
         args.tool_neighbor_max = {
-            'gripper_asym': [4, 4],
             'gripper_sym_rod': [4, 4],
-            'gripper_sym_plane': [4, 4],
-            'roller_small': [4],
-            'roller_large': [4],
-            'press_square': [4],
-            'press_circle': [4],
-            'punch_square': [4],
-            'punch_circle': [4],
         }
     else:
         args.tool_dim = {
-            'gripper_asym': [11, 143],
             'gripper_sym_rod': [11, 11],
-            'gripper_sym_plane': [143, 143],
-            'roller_small': [15],
-            'roller_large': [15],
-            'press_square': [81],
-            'press_circle': [81],
-            'punch_square': [16],
-            'punch_circle': [16],
         }
 
         args.tool_neighbor_radius_dict = {
-            'gripper_asym': [0.01, 0.009],
             'gripper_sym_rod': [0.01, 0.01],
-            'gripper_sym_plane': [0.009, 0.009],
-            'roller_small': [0.02],
-            'roller_large': [0.02],
-            'press_square': [0.02],
-            'press_circle': [0.02],
-            'punch_square': [0.02],
-            'punch_circle': [0.02],
         }
 
         args.tool_neighbor_max = {
-            'gripper_asym': [2, 4],
             'gripper_sym_rod': [2, 2],
-            'gripper_sym_plane': [4, 4],
-            'roller_small': [2],
-            'roller_large': [2],
-            'press_square': [4],
-            'press_circle': [4],
-            'punch_square': [4],
-            'punch_circle': [4],
         }
 
     if 'default' in args.tool_neighbor_radius:
@@ -335,7 +240,7 @@ def gen_args_env(args):
     else:
         args.tool_neighbor_radius = [float(x) for x in args.tool_neighbor_radius.split('+')]
 
-    args.tool_full_repr_dict = load_tools(args)
+    args.tool_full_repr_dict = load_tool_repr(args)
 
     return args
 

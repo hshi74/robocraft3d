@@ -179,7 +179,7 @@ def get_square(center, unit_size, dim, axis):
     return np.array(state, dtype=np.float32)
 
 
-def load_tools(args):
+def load_tool_repr(args):
     tool_full_repr_dict = {}
     for tool_name, tool_geom_list in args.tool_geom_mapping.items():
         tool_repr_points_list = []
@@ -188,24 +188,15 @@ def load_tools(args):
             if os.path.exists(tool_repr_points_path):
                 tool_repr_points_list.append(np.load(tool_repr_points_path, allow_pickle=True))
             else:
-                tool_mesh = o3d.io.read_triangle_mesh(os.path.join(args.tool_repr_path, f'{tool_geom_list[i]}.stl'))
+                tool_mesh = o3d.io.read_triangle_mesh(os.path.join(args.tool_repr_path, f'{tool_geom_list[i]}_repr.stl'))
                 tool_surface_dense = o3d.geometry.TriangleMesh.sample_points_uniformly(tool_mesh, 100000, seed=0)
 
-                if 'press_circle' in tool_geom_list[i]:
-                    voxel_size = 0.0057
-                else:
-                    voxel_size = 0.006
-
-                tool_surface = tool_surface_dense.voxel_down_sample(voxel_size=voxel_size)
-                
-                if 'press_circle' in tool_geom_list[i]:
-                    tool_repr_points = fps(np.asarray(tool_surface.points), args.tool_dim['press_circle'][i])
-                else:
-                    tool_repr_points = np.asarray(tool_surface.points)
+                tool_surface = tool_surface_dense.voxel_down_sample(voxel_size=0.006)                
+                tool_repr_points = np.asarray(tool_surface.points)
 
                 tool_repr_points_list.append(tool_repr_points)
-                # with open(tool_repr_points_path, 'wb') as f:
-                #     np.save(f, tool_repr_points)
+                with open(tool_repr_points_path, 'wb') as f:
+                    np.save(f, tool_repr_points)
 
         tool_full_repr_dict[tool_name] = tool_repr_points_list
 
@@ -508,4 +499,4 @@ def read_ros_bag(bag_path):
 
     bag.close()
 
-    retrun pcd_msgs
+    return pcd_msgs

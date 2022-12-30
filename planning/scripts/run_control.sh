@@ -1,5 +1,5 @@
 tool_type="gripper_sym_rod_robot_v4_surf_nocorr_full"
-debug=0
+debug=1
 target_shape_name="alphabet_gnn/K"
 optim_algo="RS"
 CEM_sample_size=20
