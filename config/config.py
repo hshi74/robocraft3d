@@ -141,8 +141,8 @@ def gen_args_env(args):
     # traing output
     args.dy_out_path =  f'dump/dynamics/dump_{args.tool_type}'
     # ROS package
-    # args.ros_pkg_path = "/scr/hshi74/catkin_ws/src/robocook_ros"
-    args.ros_pkg_path = "/home/haochen/catkin_ws/src/robocook_ros"
+    args.ros_pkg_path = "/scr/hshi74/catkin_ws/src/robocook_ros"
+    # args.ros_pkg_path = "/home/haochen/catkin_ws/src/robocook_ros"
     # sim config file
     # args.sim_config_path = f'config/taichi_env/{args.env}.yml'
     # tool models
@@ -199,7 +199,7 @@ def gen_args_env(args):
     }
 
     args.tool_geom_mapping = {
-        'gripper_sym_rod': ['gripper_l', 'gripper_r'],
+        'gripper_sym_rod': ['gripper_l_5', 'gripper_r_5'],
     }
 
     args.tool_sim_primitive_mapping = {

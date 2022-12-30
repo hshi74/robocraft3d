@@ -82,20 +82,14 @@ class MPController(object):
 
 
     def get_target_shape(self):
-        target = os.path.basename(args.target_shape_name)
         target_dir = os.path.join(cd, '..', 'target_shapes', args.target_shape_name)
-
-        if 'sim' in args.target_shape_name:
-            prefix = target
-        else:
-            prefix = f"{target}/{target.split('_')[0]}"
 
         target_shape = {}
         for type in ['sparse', 'dense', 'surf']:
             if type == 'sparse':
-                target_frame_path = os.path.join(target_dir, f'{prefix}.h5')
+                target_frame_path = os.path.join(target_dir, f'001/001.h5')
             else:
-                target_frame_path = os.path.join(target_dir, f'{prefix}_{type}.h5')
+                target_frame_path = os.path.join(target_dir, f'001/001_{type}.h5')
 
             if os.path.exists(target_frame_path):
                 target_data = load_data(args.data_names, target_frame_path)
@@ -237,21 +231,20 @@ class MPController(object):
 
     def plan(self, state_cur_dict, rollout_path, max_n_actions=5, pred_err_bar=0.02):
         global command_feedback
-
-        param_seq, state_seq, info_dict = self.tool.rollout(
+        best_param_seq, best_state_seq, best_info_dict = self.tool.rollout(
             state_cur_dict, self.target_shape, rollout_path, args.max_n_actions
         )
 
         if args.close_loop:
-            act_len = state_seq.shape[0] // param_seq.shape[0]
+            act_len = best_state_seq.shape[0] // best_param_seq.shape[0]
             act_start = 0
             act_end = 1
-            param_seq_todo = param_seq[act_start:act_end].numpy()
+            param_seq_todo = best_param_seq[act_start:act_end].numpy()
             param_seq_pred = param_seq_todo
-            state_seq_pred = state_seq[:act_len][:args.n_particles]
+            state_seq_pred = best_state_seq[:act_len][:args.n_particles]
             state_pred_tensor = torch.tensor(state_seq_pred[-1], device=args.device, 
                 dtype=torch.float32).unsqueeze(0)
-            info_dict_pred = info_dict
+            info_dict_pred = best_info_dict
 
             ros_data_path = os.path.join(rollout_path, 'raw_data')
             # loss_dict = {'Chamfer': [], 'EMD': [], 'IOU': []}
@@ -277,14 +270,14 @@ class MPController(object):
                     # TODO: Need to tune this number
                     if pred_err > 0 and pred_err < pred_err_bar:
                         print(f"The prediction is good enough!")
-                        if act_end < param_seq.shape[0]:
+                        if act_end < best_param_seq.shape[0]:
                             # move to the next action
                             act_start = act_end
                         else:
                             break
                     else:
                         # figure out a new solution
-                        param_seq, state_seq, info_dict = self.tool.rollout(
+                        best_param_seq, best_state_seq, best_info_dict = self.tool.rollout(
                             state_cur_dict, self.target_shape, rollout_path, 
                             min(max_n_actions - param_seq_pred.shape[0], args.max_n_actions)
                         )
@@ -292,13 +285,13 @@ class MPController(object):
 
                     act_end = act_start + 1
 
-                    param_seq_todo = param_seq[act_start:act_end].numpy()
+                    param_seq_todo = best_param_seq[act_start:act_end].numpy()
                     param_seq_pred = np.concatenate((param_seq_pred, param_seq_todo))
-                    state_seq_pred = np.concatenate((state_seq_pred, state_seq[act_start*act_len:act_end*act_len]))
+                    state_seq_pred = np.concatenate((state_seq_pred, best_state_seq[act_start*act_len:act_end*act_len]))
                     state_pred_tensor = torch.tensor(state_seq_pred[-1], device=args.device, 
                         dtype=torch.float32).unsqueeze(0)
 
-                    for key, value in info_dict.items():
+                    for key, value in best_info_dict.items():
                         info_dict_pred[key].extend(value)
                 else:
                     break

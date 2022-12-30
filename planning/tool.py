@@ -59,7 +59,7 @@ class Tool(object):
             print(f"{self.name.upper()}: \n{param_seq}")
             print(f"PLANNING TIME: {end - start}")
 
-            time_path = os.path.join(rollout_path, '..', 'planning_time.txt')
+            time_path = os.path.join(rollout_path, 'planning_time.txt')
             if os.path.exists(time_path):
                 with open(time_path, 'r') as f:
                     planning_time = float(f.read())
