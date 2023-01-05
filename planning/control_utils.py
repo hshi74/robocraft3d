@@ -139,49 +139,6 @@ def params_to_actions(args, tool_params, param_seq, min_bounds, step=1):
                 gripper_r_act = 0 - gripper_l_act
                 act = torch.cat((gripper_l_act, zero_pad, gripper_r_act, zero_pad))
                 actions.append(act)
-        elif 'press' in args.env or 'punch' in args.env:
-            tool_height = 0.01
-            press_pos_z = min_bounds[2] + params[2] + args.tool_center[args.env][0][2] + args.ee_fingertip_T_mat[2][3] + tool_height
-            press_rate = (press_pos_z - tool_params['init_h']) / (tool_params['act_len'] / step)
-            for _ in range(0, tool_params['act_len'], step):
-                press_act = torch.cat([torch.zeros(2), press_rate.unsqueeze(0)])
-                act = torch.cat((press_act, zero_pad))
-                actions.append(act)
-        elif 'roller' in args.env:
-            if 'large' in args.env:
-                tool_height = 0.02
-            else:
-                tool_height = 0.012
-            roll_pos_z = min_bounds[2] + params[2] + args.tool_center[args.env][0][2] + args.ee_fingertip_T_mat[2][3] + tool_height
-            _, _, _, rot_noise = params
-            roll_dist = torch.tensor(tool_params["roll_range"])
-            press_act_len = tool_params['act_len'] // 2
-            press_rate = (roll_pos_z - tool_params['init_h']) / (press_act_len / step)
-            for _ in range(0, press_act_len, step):
-                press_act = torch.cat([torch.zeros(2), press_rate.unsqueeze(0)])
-                act = torch.cat((press_act, zero_pad))
-                actions.append(act)
-
-            roll_z_angle = torch.cat([torch.zeros(2), (rot_noise + np.pi / 4).unsqueeze(0)])
-            roll_z_rot_mat = euler_angles_to_matrix(roll_z_angle, 'XYZ')
-            roll_delta = roll_z_rot_mat @ torch.cat([roll_dist.unsqueeze(0), torch.zeros(2)])
-
-            roll_act_len = tool_params['act_len'] - press_act_len
-            for _ in range(0, roll_act_len, step):
-                x = roll_delta[0] / (roll_act_len / step)
-                y = roll_delta[1] / (roll_act_len / step)
-                roll_act = torch.cat([x.unsqueeze(0), y.unsqueeze(0), torch.zeros(1)])
-                roll_angle = 0
-                roll_act_dist = torch.linalg.norm(roll_act)
-                if args.full_repr and roll_act_dist > 0:
-                    # roll_norm = torch.cross(roll_act, (torch.FloatTensor([[0, torch.sign(roll_dist), 0]]) @ roll_z_rot_mat).squeeze())
-                    roll_dir = torch.sign(roll_dist)
-                    if 'large' in args.env:
-                        roll_angle = roll_dir * roll_act_dist / 0.02
-                    else:
-                        roll_angle = roll_dir * roll_act_dist / 0.012
-                act = torch.cat((roll_act, torch.tensor([roll_angle, 0, 0])))
-                actions.append(act)
         else:
             raise NotImplementedError
 

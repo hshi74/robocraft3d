@@ -26,7 +26,7 @@ parser.add_argument('--n_particles', type=int, default=300)
 
 ########## Perception ##########
 # ==================== TUNE at PERCEPTION ==================== #
-parser.add_argument('--surface_sample', type=int, default=0)
+parser.add_argument('--surface_sample', type=int, default=1)
 parser.add_argument('--correspondance', type=int, default=0)
 # ==================== TUNE at PERCEPTION ==================== #
 
@@ -46,9 +46,9 @@ parser.add_argument('--full_repr', type=int, default=1)
 parser.add_argument('--neighbor_radius', type=float, default=0.01)
 parser.add_argument('--tool_neighbor_radius', type=str, default='default')
 parser.add_argument('--motion_bound', type=float, default=0.005)
-parser.add_argument('--sequence_length', type=int, default=4)
-parser.add_argument('--chamfer_weight', type=float, default=0.2)
-parser.add_argument('--emd_weight', type=float, default=0.8)
+parser.add_argument('--sequence_length', type=int, default=3)
+parser.add_argument('--chamfer_weight', type=float, default=0.5)
+parser.add_argument('--emd_weight', type=float, default=0.5)
 parser.add_argument('--h_weight', type=float, default=0.0)
 parser.add_argument('--loss_ord', type=int, default=2)
 parser.add_argument('--dcd_alpha', type=int, default=50)
@@ -150,12 +150,7 @@ def gen_args_env(args):
     # tool repr models
     args.tool_repr_path = "geometries/reprs"
 
-    if 'synthetic' in args.data_type:
-        tool_type_list = args.tool_type.split('=')
-        args.data_time_step = int(tool_type_list[-1])
-        args.tool_type = tool_type_list[0].replace('_time_step', '')
-    else:
-        args.data_time_step = 1
+    args.data_time_step = 1
 
     ##### camera ######
     args.depth_optical_frame_pose = [0, 0, 0, 0.5, -0.5, 0.5, -0.5]
@@ -166,13 +161,12 @@ def gen_args_env(args):
     ##### robot #####
     # if args.stage != 'dy':
     args.ee_fingertip_T_mat = np.array([[0.707, 0.707, 0, 0], [-0.707, 0.707, 0, 0], [0, 0, 1, 0.1034], [0, 0, 0, 1]])
-    args.tool_ft_trans = np.array([0.0, 0.019, 0.042192])
 
     mid_point_sim = np.array([0.5, 0.1, 0.5])
     # robocraft
     # mid_point_robot = np.array([0.437, 0.0, 0.06])
     # robocook
-    mid_point_robot = np.array([0.4, -0.1, 0.0])
+    mid_point_robot = np.array([0.43, -0.01, 0.1])
 
     if 'robot' in args.tool_type:
         args.mid_point = mid_point_robot
@@ -185,7 +179,7 @@ def gen_args_env(args):
     args.floor_dim = 9
     if 'robot' in args.tool_type:
         args.floor_unit_size = 0.05 # distance between two neighbor dots
-        args.floor_pos = np.array([0.4, -0.1, 0.0])
+        args.floor_pos = np.array([0.43, -0.01, 0.08])
     else:        
         args.floor_unit_size = 0.25 
         args.floor_pos = np.array([0.5, 0, 0.5])
@@ -194,10 +188,6 @@ def gen_args_env(args):
     args.floor_normals = np.tile([0.0, 0.0, 1.0], (args.floor_dim, 1))
 
     ##### tools #####
-    args.tool_center = {
-        'gripper_sym_rod': [np.array([0.019316, 0.001, 0.049337]), np.array([-0.019316, 0.001, 0.049337])],
-    }
-
     args.tool_geom_mapping = {
         'gripper_sym_rod': ['gripper_l_8', 'gripper_r_8'],
     }
@@ -207,38 +197,17 @@ def gen_args_env(args):
     }
 
     args.tool_action_space_size = {
-        'gripper_sym_rod': 3,
+        'gripper_sym_rod': 4,
     }
 
     if args.full_repr:
         args.tool_dim = {
             'gripper_sym_rod': [182, 182],
         }
-
-        args.tool_neighbor_radius_dict = {
-            'gripper_sym_rod': [0.005, 0.005],
-        }
-
-        args.tool_neighbor_max = {
-            'gripper_sym_rod': [4, 4],
-        }
     else:
-        args.tool_dim = {
-            'gripper_sym_rod': [11, 11],
-        }
+        raise NotImplementedError
 
-        args.tool_neighbor_radius_dict = {
-            'gripper_sym_rod': [0.01, 0.01],
-        }
-
-        args.tool_neighbor_max = {
-            'gripper_sym_rod': [2, 2],
-        }
-
-    if 'default' in args.tool_neighbor_radius:
-        args.tool_neighbor_radius = args.tool_neighbor_radius_dict[args.env]
-    else:
-        args.tool_neighbor_radius = [float(x) for x in args.tool_neighbor_radius.split('+')]
+    args.tool_neighbor_radius = [float(x) for x in args.tool_neighbor_radius.split('+')]
 
     args.tool_full_repr_dict = load_tool_repr(args)
 
@@ -263,12 +232,12 @@ def gen_args_pipeline(args):
     if 'normal' in args.tool_type:
         args.state_dim = 6
         args.mean_p = np.array([*args.mid_point, 0.0, 0.0, 0.0])
-        args.mean_p[args.axes[-1]] = 0.02
+        # args.mean_p[args.axes[-1]] = 0.02
         args.std_p = np.array([0.017, 0.017, 0.01, 1.0, 1.0, 1.0])
     else:
         args.state_dim = 3
         args.mean_p = np.array([*args.mid_point])
-        args.mean_p[args.axes[-1]] = 0.02
+        # args.mean_p[args.axes[-1]] = 0.02
         args.std_p = np.array([0.017, 0.017, 0.01])
 
     args.mean_d = np.array([1e-05, 1e-05, 1e-05])
@@ -294,7 +263,6 @@ def update_dy_args(args, name, dy_args_dict):
     args.tool_dim = dy_args_dict['tool_dim']
     args.tool_type = dy_args_dict['tool_type']
     args.tool_neighbor_radius = dy_args_dict['tool_neighbor_radius']
-    args.tool_neighbor_max = dy_args_dict['tool_neighbor_max']
     args.data_type = dy_args_dict['data_type']
     args.n_his = dy_args_dict['n_his']
     args.time_step = dy_args_dict['time_step']

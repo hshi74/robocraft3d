@@ -13,7 +13,7 @@ class GNNDataset(Dataset):
         self.args = args
         self.phase = phase
         self.data_dir = os.path.join(args.dy_data_path, phase)
-        self.stat_path = os.path.join(args.dy_data_path, '..', 'stats.h5')
+        self.stat_path = os.path.join('data/stats.h5')
         self.dataset_len = 0
 
         vid_path_list = sorted(glob.glob(os.path.join(self.data_dir, '*')))
@@ -23,12 +23,7 @@ class GNNDataset(Dataset):
         self.state_data_list = []
         self.action_data_list = []
         n_frames_min = float('inf')
-        for vid_path in vid_path_list:
-            if 'synthetic' in args.data_type:
-                gt_vid_path = vid_path.replace('synthetic', 'gt').replace(f'_time_step={args.data_time_step}', '')
-            else:
-                gt_vid_path = vid_path
-
+        for gt_vid_path in vid_path_list:
             frame_start = 0
             n_frames = len(glob.glob(os.path.join(gt_vid_path, '*.h5')))
             n_frames_min = min(n_frames, n_frames_min)
@@ -54,13 +49,7 @@ class GNNDataset(Dataset):
                 for j in range(i + args.time_step * args.n_his, 
                     i + args.time_step * (args.n_his + args.sequence_length - 1) + 1, args.time_step):
                     # print(f'predict: {j}')
-                    if 'synthetic' in args.data_type:
-                        pred_frame_data = load_data(args.data_names, os.path.join(vid_path, 
-                            str(i + args.time_step * (args.n_his - 1)).zfill(3), f'{str(j).zfill(3)}.h5'))[0]
-                        pred_state = torch.tensor(pred_frame_data, device=args.device, dtype=torch.float32)
-                        state_seq.append(pred_state)
-                    else:
-                        state_seq.append(gt_state_list[j])
+                    state_seq.append(gt_state_list[j])
 
                 self.dataset_len += 1
                 state_seq_list.append(torch.stack(state_seq))

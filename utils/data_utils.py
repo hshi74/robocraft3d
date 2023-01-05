@@ -231,7 +231,6 @@ def get_normals(points, pkg='numpy'):
 
 def get_tool_repr(args, fingertip_T_list, pkg='numpy'):
     tool_dim_list = args.tool_dim[args.env]
-    tool_center_list = args.tool_center[args.env]
     if args.full_repr:
         tool_repr_list = []
         for i in range(len(fingertip_T_list)):
@@ -248,38 +247,7 @@ def get_tool_repr(args, fingertip_T_list, pkg='numpy'):
         if pkg == 'torch':
             tool_repr = torch.cat(tool_repr_list)
     else:
-        if 'gripper' in args.env:
-            unit_size = 0.05 / (tool_dim_list[0] - 1)
-            
-            def get_gripper_repr(i, gripper_center):
-                tool_repr = []
-                for j in range(tool_dim_list[i]):
-                    p = [gripper_center[args.axes[0]], gripper_center[args.axes[1]]]
-                    p.insert(args.axes[2], gripper_center[args.axes[2]] + 
-                        unit_size * (j - (tool_dim_list[i] - 1) / 2))
-                    tool_repr.append(p)
-
-                if pkg == 'numpy':
-                    tool_repr = (fingertip_T_list[i][:3, :3] @ np.array(tool_repr).T).T + \
-                        np.tile(fingertip_T_list[i][:3, 3], (tool_dim_list[i], 1))
-                else:
-                    tool_repr = (fingertip_T_list[i][:3, :3] @ torch.FloatTensor(tool_repr).T).T + \
-                        torch.tile(fingertip_T_list[i][:3, 3], (tool_dim_list[i], 1))
-
-                return tool_repr
-
-            gripper_center_l = tool_center_list[0]
-            tool_repr_l = get_gripper_repr(0, gripper_center_l)
-        
-            gripper_center_r = tool_center_list[1]
-            tool_repr_r = get_gripper_repr(1, gripper_center_r)
-
-            if pkg == 'numpy':
-                tool_repr = np.concatenate((tool_repr_l, tool_repr_r))
-            else:
-                tool_repr = torch.cat((tool_repr_l, tool_repr_r))
-        else:
-            raise NotImplementedError
+        raise NotImplementedError
 
     return tool_repr
 

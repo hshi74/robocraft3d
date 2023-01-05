@@ -98,11 +98,11 @@ def prepare_input(args, state_cur, rels_list_prev=None, device='cpu'):
             # douth idx, tool idx, distance
             for j, (p, t, d) in enumerate(sdm):
                 if t in t2p_dict:
-                    if (len(t2p_dict[t]) < args.tool_neighbor_max[args.env][i]):
-                        t2p_dict[t].append(j)
-                    else:
-                        if d < min(t2p_dict[t]):
-                            t2p_dict[t][np.argmax(t2p_dict[t])] = j
+                    # if (len(t2p_dict[t]) < args.tool_neighbor_max[args.env][i]):
+                    t2p_dict[t].append(j)
+                    # else:
+                    #     if d < min(t2p_dict[t]):
+                    #         t2p_dict[t][np.argmax(t2p_dict[t])] = j
                 else:
                     t2p_dict[t] = [j]
 

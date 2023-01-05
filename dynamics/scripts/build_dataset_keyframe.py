@@ -11,7 +11,7 @@ from utils.visualize import *
 def main():
     args = gen_args()
 
-    key_frame=16
+    key_frame=12
     keyframe_dataset_root = os.path.join('data', 'keyframe', f'data_{args.tool_type}_keyframe={key_frame}')
     os.system('mkdir -p ' + keyframe_dataset_root)
 
@@ -44,38 +44,33 @@ def main():
                     tool_dim = args.tool_dim[args.env][i]
                     tool_center_list.append(np.mean(state[tool_start:tool_start+tool_dim, :3], axis=0))
                     tool_start += tool_dim
-                if 'gripper' in args.env:
-                    grip_width = np.linalg.norm(tool_center_list[1] - tool_center_list[0])
-                    if grip_width > last_grip_width + 0.002:
-                        print(f"Start moving back at {step}...")
-                        break
-                    else:
-                        state_seq.append(state)
-                    last_grip_width = grip_width
+
+                grip_width = np.linalg.norm(tool_center_list[1] - tool_center_list[0])
+                if grip_width > last_grip_width + 0.002:
+                    print(f"Start moving back at {step}...")
+                    break
                 else:
                     state_seq.append(state)
+                last_grip_width = grip_width
 
             state_seq = np.stack(state_seq)
 
-            if 'roller' in args.env:
-                keyframe_idx_list = [int(x) for x in np.round(np.arange(0, state_seq.shape[0], (state_seq.shape[0] - 1) / (key_frame - 1)))]
-            else:
-                action_seq = state_seq[1:, args.n_particles + args.floor_dim, :3] - state_seq[:-1, args.n_particles + args.floor_dim, :3]
-                action_seq_cum = np.cumsum(action_seq, axis=0)
-                action_seq_cum_key_frame = np.cumsum(np.tile(action_seq_cum[-1] / (key_frame - 1), (key_frame - 1, 1)), axis=0)
+            action_seq = state_seq[1:, args.n_particles + args.floor_dim, :3] - state_seq[:-1, args.n_particles + args.floor_dim, :3]
+            action_seq_cum = np.cumsum(action_seq, axis=0)
+            action_seq_cum_key_frame = np.cumsum(np.tile(action_seq_cum[-1] / (key_frame - 1), (key_frame - 1, 1)), axis=0)
 
-                keyframe_idx_list = []
-                for i in range(action_seq_cum_key_frame.shape[0] - 1):
-                    dist_min = float('inf')
-                    dist_min_idx = 0
-                    for j in range(action_seq_cum.shape[0] - 1):
-                        dist = np.linalg.norm(action_seq_cum_key_frame[i] - action_seq_cum[j])
-                        if dist < dist_min:
-                            dist_min_idx = j
-                            dist_min = dist
+            keyframe_idx_list = []
+            for i in range(action_seq_cum_key_frame.shape[0] - 1):
+                dist_min = float('inf')
+                dist_min_idx = 0
+                for j in range(action_seq_cum.shape[0] - 1):
+                    dist = np.linalg.norm(action_seq_cum_key_frame[i] - action_seq_cum[j])
+                    if dist < dist_min:
+                        dist_min_idx = j
+                        dist_min = dist
 
-                    keyframe_idx_list.append(dist_min_idx)
-                keyframe_idx_list = [0] + keyframe_idx_list + [state_seq.shape[0] - 1]
+                keyframe_idx_list.append(dist_min_idx)
+            keyframe_idx_list = [0] + keyframe_idx_list + [state_seq.shape[0] - 1]
 
             for i in range(len(keyframe_idx_list)):
                 os.system(f"cp {os.path.join(dy_vid_path, str(keyframe_idx_list[i]).zfill(3) + '.h5')} " + \
