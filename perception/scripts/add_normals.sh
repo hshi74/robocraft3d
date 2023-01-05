@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 
-python scripts/perception/add_normals.py \
+python perception/scripts/add_normals.py \
 	--stage perception \
-	--data_type synthetic \
-	--tool_type gripper_asym_robot_v4_surf_nocorr_full_normal_time_step=5 \
+	--tool_type gripper_sym_rod_robot_v1_surf_nocorr_full \
 	--debug 0

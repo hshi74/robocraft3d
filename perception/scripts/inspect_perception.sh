@@ -1,7 +1,7 @@
-tool_type="press_square_robot_v4"
-perception_dir="./dump/perception/press_square_robot_v4_29-Aug-2022-01:11:10.030099"
+tool_type="gripper_sym_rod_robot_v1"
+perception_dir="./dump/perception/gripper_sym_rod_robot_v1_04-Jan-2023-14:36:42.790368"
 
-mkdir -p ./dump/perception/inspect
+mkdir -p ./dump/perception/inspect/$tool_type
 
 # echo $perception_dir
 for sub_dir in $(find $perception_dir -maxdepth 1 -type d); do

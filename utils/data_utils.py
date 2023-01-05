@@ -191,7 +191,7 @@ def load_tool_repr(args):
                 tool_mesh = o3d.io.read_triangle_mesh(os.path.join(args.tool_repr_path, f'{tool_geom_list[i]}_repr.stl'))
                 tool_surface_dense = o3d.geometry.TriangleMesh.sample_points_uniformly(tool_mesh, 100000, seed=0)
 
-                tool_surface = tool_surface_dense.voxel_down_sample(voxel_size=0.006)                
+                tool_surface = tool_surface_dense.voxel_down_sample(voxel_size=0.007)                
                 tool_repr_points = np.asarray(tool_surface.points)
 
                 tool_repr_points_list.append(tool_repr_points)
@@ -268,75 +268,16 @@ def get_tool_repr(args, fingertip_T_list, pkg='numpy'):
 
                 return tool_repr
 
-            if 'rod' in args.env or 'asym' in args.env: 
-                gripper_center_l = tool_center_list[0]
-                tool_repr_l = get_gripper_repr(0, gripper_center_l)
-            else:
-                gripper_center_l = tool_center_list[0]
-                unit_size = 0.05 / (int(np.sqrt(tool_dim_list[0])) - 1)
-                tool_repr_l = get_square(gripper_center_l, unit_size, tool_dim_list[0], 0)
+            gripper_center_l = tool_center_list[0]
+            tool_repr_l = get_gripper_repr(0, gripper_center_l)
+        
+            gripper_center_r = tool_center_list[1]
+            tool_repr_r = get_gripper_repr(1, gripper_center_r)
 
-                if pkg == 'numpy':
-                    tool_repr_l = (fingertip_T_list[0][:3, :3] @ tool_repr_l.T).T + \
-                        np.tile(fingertip_T_list[0][:3, 3], (tool_dim_list[0], 1))
-                else:
-                    tool_repr_l = (fingertip_T_list[0][:3, :3] @ torch.FloatTensor(tool_repr_l).T).T + \
-                        torch.tile(fingertip_T_list[0][:3, 3], (tool_dim_list[0], 1))
-
-            if 'rod' in args.env: 
-                gripper_center_r = tool_center_list[1]
-                tool_repr_r = get_gripper_repr(1, gripper_center_r)
-            else:
-                gripper_center_r = tool_center_list[1]
-                unit_size = 0.05 / (int(np.sqrt(tool_dim_list[1])) - 1)
-                tool_repr_r = get_square(gripper_center_r, unit_size, tool_dim_list[1], 0)
-
-                if pkg == 'numpy':
-                    tool_repr_r = (fingertip_T_list[1][:3, :3] @ tool_repr_r.T).T + \
-                        np.tile(fingertip_T_list[1][:3, 3], (tool_dim_list[1], 1))
-                else:
-                    tool_repr_r = (fingertip_T_list[1][:3, :3] @ torch.FloatTensor(tool_repr_r).T).T + \
-                        torch.tile(fingertip_T_list[1][:3, 3], (tool_dim_list[1], 1))
-            
             if pkg == 'numpy':
                 tool_repr = np.concatenate((tool_repr_l, tool_repr_r))
             else:
                 tool_repr = torch.cat((tool_repr_l, tool_repr_r))
-
-        elif 'roller' in args.env:
-            unit_size = 0.07 / (tool_dim_list[0] - 1)
-            tool_repr = []
-            for j in range(tool_dim_list[0]):
-                p = [tool_center_list[0][args.axes[1]], tool_center_list[0][args.axes[2]]]
-                p.insert(args.axes[0], tool_center_list[0][args.axes[0]] + 
-                    unit_size * (j - (tool_dim_list[0] - 1) / 2))
-                tool_repr.append(p)
-
-            if pkg == 'numpy':
-                tool_repr = (fingertip_T_list[0][:3, :3] @ np.array(tool_repr).T).T + \
-                    np.tile(fingertip_T_list[0][:3, 3], (tool_dim_list[0], 1))
-            else:
-                tool_repr = (fingertip_T_list[0][:3, :3] @ torch.FloatTensor(tool_repr).T).T + \
-                    torch.tile(fingertip_T_list[0][:3, 3], (tool_dim_list[0], 1))
-
-        elif 'press' in args.env or 'punch' in args.env:
-            press_center = tool_center_list[0]
-            if 'square' in args.env:
-                if 'press' in args.env:
-                    unit_size = 0.04 / (int(np.sqrt(tool_dim_list[0])) - 1)
-                else:
-                    unit_size = 0.018 / (int(np.sqrt(tool_dim_list[0])) - 1)
-                tool_repr = get_square(press_center, unit_size, tool_dim_list[0], 2)
-            else:
-                radius = 0.02 if 'press' in args.env else 0.01
-                tool_repr = get_circle(press_center, radius, tool_dim_list[0], 2)
-
-            if pkg == 'numpy':
-                tool_repr = (fingertip_T_list[0][:3, :3] @ tool_repr.T).T + \
-                    np.tile(fingertip_T_list[0][:3, 3], (tool_dim_list[0], 1))
-            else:
-                tool_repr = (fingertip_T_list[0][:3, :3] @ torch.FloatTensor(tool_repr).T).T + \
-                    torch.tile(fingertip_T_list[0][:3, 3], (tool_dim_list[0], 1))
         else:
             raise NotImplementedError
 

@@ -23,7 +23,7 @@ from utils.visualize import *
 
 
 # @profile
-def merge_point_cloud(args, pcd_msgs, crop_range=[-0.1, -0.1, 0.002, 0.1, 0.1, 0.07], visualize=False):
+def merge_point_cloud(args, pcd_msgs, crop_range=None, visualize=False):
     pcd_all_list = []
     for i in range(len(pcd_msgs)):
         cloud_rec = ros_numpy.point_cloud2.pointcloud2_to_array(pcd_msgs[i])
@@ -39,9 +39,9 @@ def merge_point_cloud(args, pcd_msgs, crop_range=[-0.1, -0.1, 0.002, 0.1, 0.1, 0
         cloud_rgb = cloud_bgr[:, ::-1]
 
         if crop_range is None:
-            x_filter = (points.T[0] > args.mid_point[0] - 0.5) & (points.T[0] < args.mid_point[0] + 0.3)
-            y_filter = (points.T[1] > -0.45) & (points.T[1] < 0.45)
-            z_filter = (points.T[2] > args.mid_point[2] - 0.02) & (points.T[2] < args.mid_point[2] + 1.0)
+            x_filter = (points.T[0] > 0.45 - 0.1) & (points.T[0] < 0.45 + 0.1)
+            y_filter = (points.T[1] > 0.0 - 0.1) & (points.T[1] < 0.0 + 0.1)
+            z_filter = (points.T[2] > 0.08 + 0.0) & (points.T[2] < 0.08 + 0.1)
         else:
             x_filter = (points.T[0] > args.mid_point[0] + crop_range[0]) & (points.T[0] < args.mid_point[0] + crop_range[3])
             y_filter = (points.T[1] > args.mid_point[1] + crop_range[1]) & (points.T[1] < args.mid_point[1] + crop_range[4])
@@ -106,8 +106,8 @@ def preprocess_raw_pcd(args, pcd_all, rm_stats_outliers=2, visualize=False):
     pcd_rgb = pcd_colors[None, :, :]
 
     pcd_hsv = cv.cvtColor(pcd_rgb, cv.COLOR_RGB2HSV)
-    hsv_lower = np.array([0., 0., 0.])
-    hsv_upper = np.array([80., 255., 255.])
+    hsv_lower = np.array([0, 0.5, 0], dtype=np.float32)
+    hsv_upper = np.array([360, 1, 1], dtype=np.float32)
     mask = cv.inRange(pcd_hsv, hsv_lower, hsv_upper)
     cube_label = np.where(mask[0] == 255)
 
@@ -288,19 +288,11 @@ def sample(args, pcd, pcd_dense_prev, pcd_sparse_prev, tool_list, is_moving_back
 
     # cube = cube.voxel_down_sample(voxel_size=0.004)
 
-    if 'roller' in args.env or 'press' in args.env:
-        selected_mesh = alpha_shape_mesh_reconstruct(cube, alpha=0.2, mesh_fix=False, visualize=visualize)
-        f = SDF(selected_mesh.vertices, selected_mesh.triangles)
-    else:
-        selected_mesh = poisson_mesh_reconstruct(cube, depth=6, mesh_fix=True, visualize=visualize)
-        f = SDF(selected_mesh.points, selected_mesh.faces.reshape(selected_mesh.n_faces, -1)[:, 1:])
+    selected_mesh = poisson_mesh_reconstruct(cube, depth=6, mesh_fix=True, visualize=visualize)
+    f = SDF(selected_mesh.points, selected_mesh.faces.reshape(selected_mesh.n_faces, -1)[:, 1:])
     
     sdf = f(sampled_points)
     sampled_points = sampled_points[sdf > 0]
-
-    if not 'gripper' in args.env:
-        vg_mask = vg_filter(pcd, sampled_points, visualize=visualize)
-        sampled_points = sampled_points[vg_mask]
 
     ##### 3. use SDF to filter out points INSIDE the tool mesh #####
     sampled_points, _ = inside_tool_filter(sampled_points, tool_list, visualize=visualize)
@@ -311,25 +303,24 @@ def sample(args, pcd, pcd_dense_prev, pcd_sparse_prev, tool_list, is_moving_back
         visualize_o3d([sampled_pcd, cube, *list(zip(*tool_list))[1]], title='sampled_points')
 
     ##### 6. filter out the noise #####
-    if not 'roller' in args.env or not 'press' in args.env:
-        cl, inlier_ind_stat = sampled_pcd.remove_statistical_outlier(nb_neighbors=50, std_ratio=1.5)
-        sampled_pcd_stat = sampled_pcd.select_by_index(inlier_ind_stat)
-        outliers_stat = sampled_pcd.select_by_index(inlier_ind_stat, invert=True)
-        
-        # cl, inlier_ind_radi = sampled_pcd_stat.remove_radius_outlier(nb_points=300, radius=0.01)
-        # sampled_pcd_radi = sampled_pcd_stat.select_by_index(inlier_ind_radi)
-        # outliers_radi = sampled_pcd_stat.select_by_index(inlier_ind_radi, invert=True)
-        
-        # sampled_pcd = sampled_pcd_radi
-        # outliers = outliers_stat + outliers_radi
+    cl, inlier_ind_stat = sampled_pcd.remove_statistical_outlier(nb_neighbors=50, std_ratio=1.5)
+    sampled_pcd_stat = sampled_pcd.select_by_index(inlier_ind_stat)
+    outliers_stat = sampled_pcd.select_by_index(inlier_ind_stat, invert=True)
+    
+    # cl, inlier_ind_radi = sampled_pcd_stat.remove_radius_outlier(nb_points=300, radius=0.01)
+    # sampled_pcd_radi = sampled_pcd_stat.select_by_index(inlier_ind_radi)
+    # outliers_radi = sampled_pcd_stat.select_by_index(inlier_ind_radi, invert=True)
+    
+    # sampled_pcd = sampled_pcd_radi
+    # outliers = outliers_stat + outliers_radi
 
-        sampled_pcd = sampled_pcd_stat
-        outliers = outliers_stat
+    sampled_pcd = sampled_pcd_stat
+    outliers = outliers_stat
 
-        if visualize:
-            sampled_pcd.paint_uniform_color([0.0, 0.8, 0.0])
-            outliers.paint_uniform_color([0.8, 0.0, 0.0])
-            visualize_o3d([cube, sampled_pcd, outliers], title='cleaned_point_cloud', pcd_color=color_avg)
+    if visualize:
+        sampled_pcd.paint_uniform_color([0.0, 0.8, 0.0])
+        outliers.paint_uniform_color([0.8, 0.0, 0.0])
+        visualize_o3d([cube, sampled_pcd, outliers], title='cleaned_point_cloud', pcd_color=color_avg)
 
     ##### (optional) 8. surface sampling #####
     if args.surface_sample:
@@ -398,28 +389,19 @@ def ros_bag_to_pcd(args, bag_path, tool_list, pcd_dense_prev=None, pcd_sparse_pr
 
     bag.close()
 
-    pcd = merge_point_cloud(args, pcd_msgs, visualize=visualize)
+    pcd = merge_point_cloud(args, pcd_msgs, visualize=False)
 
     # transform the tool mesh
-    fingertip_mat = args.ee_fingertip_T_mat[:3, :3] @ quat2mat(ee_quat) 
-
-    # The data for asym gripping is collected incorrectly
-    if 'asym' in args.env:
-        fingertip_mat = np.array([[-1, 0, 0], [0, -1, 0], [0, 0, 1]]) @ fingertip_mat
-
     fingermid_pos = (quat2mat(ee_quat) @ args.ee_fingertip_T_mat[:3, 3].T).T + ee_pos
+    fingertip_mat = quat2mat(ee_quat) @ args.ee_fingertip_T_mat[:3, :3]
 
-    tool_name_list = args.tool_geom_mapping[args.env]
+    tool_geom_name_list = args.tool_geom_mapping[args.env]
     tool_list_T = []
     fingertip_T_list = []
-    for k in range(len(tool_name_list)):
-        if 'gripper' in args.env:
-            fingertip_pos = (fingertip_mat @ np.array([(1 - 2 * k) * (gripper_width) / 2, 0, 0]).T).T + fingermid_pos
-        else:
-            fingertip_pos = fingermid_pos
+    for k in range(len(tool_geom_name_list)):
+        fingertip_pos = (fingertip_mat @ np.array([0, (2 * k - 1) * (gripper_width / 2), 0]).T).T + fingermid_pos
         fingertip_T = np.concatenate((np.concatenate((fingertip_mat, np.array([fingertip_pos]).T), axis=1), [[0, 0, 0, 1]]), axis=0)
         fingertip_T_list.append(fingertip_T)
-
         tool_mesh_T = copy.deepcopy(tool_list[k][0]).transform(fingertip_T)
         tool_surface_T = copy.deepcopy(tool_list[k][1]).transform(fingertip_T)
         tool_list_T.append((tool_mesh_T, tool_surface_T))
@@ -430,17 +412,14 @@ def ros_bag_to_pcd(args, bag_path, tool_list, pcd_dense_prev=None, pcd_sparse_pr
     if write:
         visualize_o3d([pcd, *list(zip(*tool_list_T))[1]], title='transformed_tool_mesh', path=os.path.join(image_path_prefix + '_raw.png'))
 
-    if 'gripper' in args.env:
-        dist = gripper_width / 2
-        # leveraging motion prior
-        if not is_moving_back and dist > last_dist + 0.001:
-            is_moving_back = True
-            print("Start moving back...")
-        if is_moving_back and dist < last_dist - 0.001:
-            is_moving_back = False
-            print("End moving back...")
-    else:
-        dist = np.linalg.norm(args.mid_point - fingertip_T_list[0][:3, 3])
+    dist = gripper_width / 2
+    # leveraging motion prior
+    if not is_moving_back and dist > last_dist + 0.001:
+        is_moving_back = True
+        print("Start moving back...")
+    if is_moving_back and dist < last_dist - 0.001:
+        is_moving_back = False
+        print("End moving back...")
 
     pcd_dense, pcd_sparse = sample(args, pcd, pcd_dense_prev, pcd_sparse_prev, 
         tool_list_T, is_moving_back, patch=False, visualize=visualize)
@@ -469,15 +448,10 @@ def main():
     cd = os.path.dirname(os.path.realpath(sys.argv[0]))
     rollout_dir = os.path.join(cd, '..', 'dump', 'perception', f'{args.tool_type}_{time_now}')
 
-    if 'haochen' in args.ros_pkg_path:
-        data_root = os.path.join(args.ros_pkg_path, 'raw_data', args.tool_type)
-    elif 'press' in args.env or 'punch' in args.env:
-        data_root = os.path.join("/media/hshi74/wd_drive/robocook", 'raw_data', args.tool_type)
-    else:
-        data_root = os.path.join("/media/hshi74/Game Drive PS4/robocook", 'raw_data', args.tool_type)
+    data_root = os.path.join("/media/hshi74/wd_drive/robocraft3d", 'raw_data', args.tool_type)
 
     dir_list = sorted(glob.glob(os.path.join(data_root, '*')))
-    episode_len = 5 if 'gripper' in args.env else 3
+    episode_len = 5
 
     start_idx = input("Please enter the start index:\n") # 0
     n_vids = input("Please enter the range:\n") # len(dir_list)
@@ -495,17 +469,20 @@ def main():
 
         bag_path = os.path.join(data_root, f'ep_{str(i // episode_len).zfill(3)}', f'seq_{str(i % episode_len).zfill(3)}')
 
-        bag_list = sorted(glob.glob(os.path.join(bag_path, '*.bag')), key=lambda x:float(os.path.basename(x)[:-4]))
+        # -1.000 is before rotation
+        bag_list = sorted(glob.glob(os.path.join(bag_path, '*.bag')), key=lambda x:float(os.path.basename(x)[:-4]))[1:]
 
         state_seq = []
         visualize = False
         pcd_dense_prev, pcd_sparse_prev = None, None
         is_moving_back = False
         last_dist = float('inf')
-        start_frame = 0
+        start_frame = 0 
         step_size = 1
-        for j in tqdm(range(start_frame, len(bag_list), step_size), desc=f'Video {vid_idx}'): # len(bag_list)
-            # if j == 30: visualize = True
+
+        params = np.load(os.path.join(bag_path, 'param_seq.npy'))
+        for j in tqdm(range(start_frame, len(bag_list), step_size), desc=f'Video {vid_idx} {params}'): # len(bag_list)
+            # if j == 18: visualize = True
 
             # ros_bag_debug_path = "misc/state_0.bag"
             image_path_prefix = os.path.join(image_path, str(j).zfill(3))
@@ -514,7 +491,7 @@ def main():
                 image_path_prefix=image_path_prefix, last_dist=last_dist, is_moving_back=is_moving_back, 
                 visualize=visualize, write=write_gt_state
             )
-            
+
             pcd_dense_prev = pcd_dense
             pcd_sparse_prev = pcd_sparse
 

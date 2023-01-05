@@ -25,7 +25,7 @@ args = gen_args()
 
 if args.close_loop:
     import rospy
-    from perception.sample_pcd import ros_bag_to_pcd
+    from perception.get_visual_feedback import ros_bag_to_pcd
     from rospy.numpy_msg import numpy_msg
     from rospy_tutorials.msg import Floats
     from std_msgs.msg import UInt8, String

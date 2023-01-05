@@ -7,7 +7,7 @@ from planning.pcd_tool_classifier.build_dataset import process_pcd
 from planning.image_tool_classifier.build_dataset import crop_image
 from PIL import Image
 from perception.pcd_utils import *
-from perception.sample_pcd import ros_bag_to_pcd
+from perception.get_visual_feedback import ros_bag_to_pcd
 from config.config import gen_args
 from utils.data_utils import *
 from utils.visualize import *

@@ -19,7 +19,7 @@ parser.add_argument('--env', type=str, default='gripper_sym_rod')
 parser.add_argument('--random_seed', type=int, default=42)
 # ['perception', 'dy(namics)', 'control']
 parser.add_argument('--stage', default='dy')
-parser.add_argument('--tool_type', type=str, default='gripper_sym_rod_robot_v4_surf_nocorr_full')
+parser.add_argument('--tool_type', type=str, default='gripper_sym_rod_robot_v1_surf_nocorr_full')
 parser.add_argument('--use_gpu', type=int, default=1)
 parser.add_argument('--n_particles', type=int, default=300)
 
@@ -41,7 +41,7 @@ parser.add_argument('--data_type', type=str, default='gt')
 parser.add_argument('--loss_type', type=str, default='chamfer_emd')
 parser.add_argument('--rigid_motion', type=int, default=0)
 parser.add_argument('--attn', type=int, default=0)
-parser.add_argument('--full_repr', type=int, default=0)
+parser.add_argument('--full_repr', type=int, default=1)
 
 parser.add_argument('--neighbor_radius', type=float, default=0.01)
 parser.add_argument('--tool_neighbor_radius', type=str, default='default')
@@ -141,8 +141,8 @@ def gen_args_env(args):
     # traing output
     args.dy_out_path =  f'dump/dynamics/dump_{args.tool_type}'
     # ROS package
-    args.ros_pkg_path = "/scr/hshi74/catkin_ws/src/robocook_ros"
-    # args.ros_pkg_path = "/home/haochen/catkin_ws/src/robocook_ros"
+    args.ros_pkg_path = "/scr/hshi74/catkin_ws/src/deformable_ros"
+    # args.ros_pkg_path = "/home/haochen/catkin_ws/src/deformable_ros"
     # sim config file
     # args.sim_config_path = f'config/taichi_env/{args.env}.yml'
     # tool models
@@ -199,7 +199,7 @@ def gen_args_env(args):
     }
 
     args.tool_geom_mapping = {
-        'gripper_sym_rod': ['gripper_l_5', 'gripper_r_5'],
+        'gripper_sym_rod': ['gripper_l_8', 'gripper_r_8'],
     }
 
     args.tool_sim_primitive_mapping = {
@@ -212,7 +212,7 @@ def gen_args_env(args):
 
     if args.full_repr:
         args.tool_dim = {
-            'gripper_sym_rod': [92, 92],
+            'gripper_sym_rod': [182, 182],
         }
 
         args.tool_neighbor_radius_dict = {

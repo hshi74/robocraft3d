@@ -73,32 +73,14 @@ def main():
     args = gen_args()
     dataset_list = ["train", "valid", "test"]
     for dataset in dataset_list:
-        if args.data_type == 'synthetic':
-            synth_dir_list = sorted(glob.glob(os.path.join(args.dy_data_path, dataset, '*')))
-            for i in tqdm(range(0, len(synth_dir_list)), desc=dataset):
-                src_dir_list = sorted(glob.glob(os.path.join(synth_dir_list[i], '*')))
-                for j in range(len(src_dir_list)):
-                    src_dir = src_dir_list[j]
-                    dest_dir = os.path.join(f'{args.dy_data_path}_normal', dataset, str(i).zfill(3), str(j).zfill(3))
-                    os.system(f"mkdir -p {dest_dir}")
-                    gen_data(args, src_dir, dest_dir, visualize=False)
+        src_dir_list = sorted(glob.glob(os.path.join(args.dy_data_path, dataset, '*')))
+        for i in tqdm(range(0, len(src_dir_list)), desc=dataset):
+            src_dir = src_dir_list[i]
+            dest_dir = os.path.join(f'{args.dy_data_path}_normal', dataset, str(i).zfill(3))
+            os.system(f"mkdir -p {dest_dir}")
+            gen_data(args, src_dir, dest_dir, visualize=False)
 
-                    # frame_list = sorted(glob.glob(os.path.join(dest_dir, '*.h5')))
-                    # for k in range(len(frame_list) - 1, -1, -1):
-                    #     frame = os.path.basename(frame_list[k])
-                    #     idx = int(frame.split('.')[0])
-                    #     os.system(f"mv {frame_list[k]} {os.path.join(os.path.dirname(frame_list[k]), f'{str(idx + j).zfill(3)}.h5')}")
-
-                    if args.debug: return
-        else:
-            src_dir_list = sorted(glob.glob(os.path.join(args.dy_data_path, dataset, '*')))
-            for i in tqdm(range(0, len(src_dir_list)), desc=dataset):
-                src_dir = src_dir_list[i]
-                dest_dir = os.path.join(f'{args.dy_data_path}_normal', dataset, str(i).zfill(3))
-                os.system(f"mkdir -p {dest_dir}")
-                gen_data(args, src_dir, dest_dir, visualize=False)
-
-                if args.debug: return
+            if args.debug: return
 
 
 if __name__ == "__main__":

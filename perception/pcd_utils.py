@@ -150,8 +150,8 @@ def poisson_mesh_reconstruct(cube, rest=None, depth=8, mesh_fix=False, visualize
         rest = segment_and_filp(rest, visualize=visualize)
         pcd = cube + rest
 
-    # n_threads = 1 if this is during close loop control
-    mesh, _ = o3d.geometry.TriangleMesh.create_from_point_cloud_poisson(pcd, depth=depth, n_threads=1)
+    # n_threads = 1 if this is during close loop control, otherwise -1
+    mesh, _ = o3d.geometry.TriangleMesh.create_from_point_cloud_poisson(pcd, depth=depth, n_threads=-1)
 
     if mesh_fix:
         mf = pymeshfix.MeshFix(np.asarray(mesh.vertices), np.asarray(mesh.triangles))
