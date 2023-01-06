@@ -10,6 +10,7 @@ import rosbag
 import ros_numpy
 import sys
 import trimesh
+import yaml
 
 from datetime import datetime
 from perception.pcd_utils import *
@@ -456,6 +457,14 @@ def main():
     start_idx = input("Please enter the start index:\n") # 0
     n_vids = input("Please enter the range:\n") # len(dir_list)
     for i in range(int(start_idx), int(start_idx) + int(n_vids)): # len(dir_list)
+        # due to camera movement during data collection
+        if i < 55:
+            with open(os.path.join(args.ros_pkg_path, 'env', 'camera_pose_world_backup.yml'), 'r') as f:
+                args.cam_pose_dict = yaml.load(f, Loader=yaml.FullLoader)
+        else:
+            with open(os.path.join(args.ros_pkg_path, 'env', 'camera_pose_world.yml'), 'r') as f:
+                args.cam_pose_dict = yaml.load(f, Loader=yaml.FullLoader)
+
         # vid_idx = os.path.basename(dir_list[i])
         vid_idx = str(i).zfill(3)
         # print(f'========== Video {vid_idx} ==========')

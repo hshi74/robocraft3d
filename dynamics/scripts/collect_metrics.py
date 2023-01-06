@@ -10,11 +10,9 @@ import sys
 from yaml import dump
 
 def main():
-    date = "Oct-30"
+    date = "Jan-05"
     if len(sys.argv) < 2:
-        # tool_arr = ["gripper_sym_robot_v1.5", "gripper_asym_robot_v1.5", "roller_small_robot_v1.5", "press_square_robot_v1.5",
-        #     "gripper_sym_robot_v1.5_surf", "gripper_asym_robot_v1.5_surf", "roller_small_robot_v1.5_surf", "press_square_robot_v1.5_surf"]
-        tool_arr = ["punch_square_robot_v4_surf_nocorr_full_normal_keyframe=16"]
+        tool_arr = ["gripper_sym_rod_robot_v1_surf_nocorr_full_normal_keyframe=12"]
         cd = os.path.dirname(os.path.realpath(sys.argv[0]))
         root = os.path.join(cd, "..", "..")
         inspect_dir = f'{root}/dump/dynamics/inspect/{date}'

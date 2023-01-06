@@ -4,9 +4,9 @@ import os
 import sys
 
 def main():
-    tool_type="gripper_sym_rod_robot_v1"
+    tool_type="gripper_sym_rod_robot_v2"
     perception_dir=[
-        "./dump/perception/gripper_sym_rod_robot_v1_04-Jan-2023-14:36:42.790368"
+        "./dump/perception/gripper_sym_rod_robot_v1_06-Jan-2023-00:00:00.033607"
     ]
 
     # tool_type += '_surf_nocorr'

@@ -44,7 +44,7 @@ parser.add_argument('--attn', type=int, default=0)
 parser.add_argument('--full_repr', type=int, default=1)
 
 parser.add_argument('--neighbor_radius', type=float, default=0.01)
-parser.add_argument('--tool_neighbor_radius', type=str, default='default')
+parser.add_argument('--tool_neighbor_radius', type=str, default='0.01+0.01')
 parser.add_argument('--motion_bound', type=float, default=0.005)
 parser.add_argument('--sequence_length', type=int, default=3)
 parser.add_argument('--chamfer_weight', type=float, default=0.5)
