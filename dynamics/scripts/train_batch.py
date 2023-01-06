@@ -11,8 +11,8 @@ rigid_motion=1
 attn=0
 chamfer_weight=0.5
 emd_weight=0.5
-neighbor_radius=0.01
-tool_neighbor_radius="0.01+0.01"
+neighbor_radius=0.02
+tool_neighbor_radius="0.02+0.02"
 train_set_ratio=1.0
 
 
@@ -22,8 +22,13 @@ def main():
         print(param_str)
         os.system(f'sbatch dynamics/scripts/train.sh {param_str}')
 
-    for tr in [0.005, 0.0075, 0.01, 0.0125, 0.015, 0.0175, 0.02]:        
-        param_str = f'{tool_type} {data_type} {debug} {loss_type} {n_his} {sequence_length} {time_step} {rigid_motion} {attn} {chamfer_weight} {emd_weight} {neighbor_radius} {tr}+{tr} {train_set_ratio}'
+    for nr in [0.02, 0.025, 0.03, 0.035, 0.04]:        
+        param_str = f'{tool_type} {data_type} {debug} {loss_type} {n_his} {sequence_length} {time_step} {rigid_motion} {attn} {chamfer_weight} {emd_weight} {nr} {tool_neighbor_radius} {train_set_ratio}'
+        print(param_str)
+        os.system(f'sbatch dynamics/scripts/train.sh {param_str}')
+
+    for tnr in [0.005, 0.01, 0.015, 0.02, 0.025, 0.03, 0.035, 0.04]:        
+        param_str = f'{tool_type} {data_type} {debug} {loss_type} {n_his} {sequence_length} {time_step} {rigid_motion} {attn} {chamfer_weight} {emd_weight} {neighbor_radius} {tnr}+{tnr} {train_set_ratio}'
         print(param_str)
         os.system(f'sbatch dynamics/scripts/train.sh {param_str}')
 

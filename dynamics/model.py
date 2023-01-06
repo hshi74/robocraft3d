@@ -102,7 +102,7 @@ class DynamicsPredictor(nn.Module):
 
         self.n_his = args.n_his
         self.time_step = args.time_step
-        self.attr_dim = 4 if 'gripper_asym' in args.env else 3
+        self.attr_dim = 3
         self.state_dim = args.state_dim
         self.mem_dim = args.nf_effect * args.mem_nlayer
 

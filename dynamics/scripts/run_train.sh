@@ -9,8 +9,8 @@ rigid_motion=1
 attn=0
 chamfer_weight=0.5
 emd_weight=0.5
-neighbor_radius=0.01
-tool_neighbor_radius="0.01+0.01"
+neighbor_radius=0.02
+tool_neighbor_radius="0.02+0.02"
 train_set_ratio=1.0
 
 bash dynamics/scripts/train.sh $tool_type $data_type $debug $loss_type $n_his $sequence_length $time_step $rigid_motion $attn $chamfer_weight $emd_weight $neighbor_radius $tool_neighbor_radius $train_set_ratio
