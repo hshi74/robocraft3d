@@ -130,7 +130,8 @@ def evaluate(args, load_args=False):
             # import pdb; pdb.set_trace()
             with torch.no_grad():
                 state_pred_seq, attn_mask_pred, rels_pred = gnn.rollout(
-                    copy.deepcopy(state_gt_seq[0]), np.expand_dims(init_pose_seq, 0), np.expand_dims(act_seq_dense, 0))
+                    copy.deepcopy(state_gt_seq[0]), np.expand_dims(init_pose_seq, 0), 
+                    np.expand_dims(act_seq_dense, 0), np.zeros((1, 1)))
 
             state_pred_seq = add_shape_to_seq(args, state_pred_seq.cpu().numpy()[0], init_pose_seq, act_seq)
             state_pred_seq = np.concatenate((copy.deepcopy(state_gt_seq[:1, :, :3]), state_pred_seq))
