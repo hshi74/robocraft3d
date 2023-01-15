@@ -238,7 +238,7 @@ if __name__ == "__main__":
 
     min_bounds = np.min(state_cur, axis=0)
     init_pose_seq = params_to_init_pose(args, np.mean(state_cur, axis=0), tool_params, param_seq).numpy()
-    act_seq = params_to_actions(args, tool_params, param_seq, min_bounds, step=1).numpy()
+    act_seq = params_to_actions(tool_params, param_seq, step=1).numpy()
 
     rollout_path=f'misc/gripper_sym_rod/test_{datetime.now().strftime("%b-%d-%H:%M:%S")}'
     os.system(f'mkdir -p {rollout_path}')

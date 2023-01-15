@@ -85,15 +85,11 @@ class MPController(object):
         target_dir = os.path.join(cd, '..', 'target_shapes', args.target_shape_name)
 
         target_shape = {}
-        for type in ['sparse', 'dense', 'surf']:
-            if type == 'sparse':
-                target_frame_path = os.path.join(target_dir, f'001/001.h5')
-            else:
-                target_frame_path = os.path.join(target_dir, f'001/001_{type}.h5')
-
-            if os.path.exists(target_frame_path):
-                target_data = load_data(args.data_names, target_frame_path)
-                target_shape[type] = target_data[0]
+        for type in ['surf']:
+            target_frame_path = os.path.join(target_dir, f'001_{type}.h5')
+            # if os.path.exists(target_frame_path):
+            target_data = load_data(args.data_names, target_frame_path)
+            target_shape[type] = target_data[0]
 
         self.target_shape = target_shape
 
@@ -157,24 +153,15 @@ class MPController(object):
             else:
                 name = '000'
 
-            init_state_path = os.path.join(target_dir, name, f'{name}.h5')
-            dense_init_state_path = os.path.join(target_dir, name, f'{name}_dense.h5')
-            surf_init_state_path = os.path.join(target_dir, name, f'{name}_surf.h5')
-
-            init_state_data = load_data(args.data_names, init_state_path)
-            dense_init_state_data = load_data(args.data_names, dense_init_state_path)
+            surf_init_state_path = os.path.join(target_dir, f'{name}_surf.h5')
             surf_init_state_data = load_data(args.data_names, surf_init_state_path)
 
             init_state = {
-                'sparse': init_state_data[0], 
-                'dense': dense_init_state_data[0],
-                'surf': surf_init_state_data[0]
+                'surf': surf_init_state_data[0],
             }
 
             state_init_dict = {
                 'tensor': torch.tensor(init_state['surf'][:args.n_particles], 
-                    device=args.device, dtype=torch.float32).unsqueeze(0),
-                'dense': torch.tensor(init_state['dense'][:-args.floor_dim],
                     device=args.device, dtype=torch.float32).unsqueeze(0),
             }
 

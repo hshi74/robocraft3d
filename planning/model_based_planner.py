@@ -21,12 +21,13 @@ from planner import Planner
 from tqdm import tqdm
 from utils.data_utils import *
 # from utils.Density_aware_Chamfer_Distance.utils_v2.model_utils import calc_dcd
+from utils.bad_grad_viz import *
 from utils.loss import *
 from utils.visualize import *
 
 
 class ModelBasedPlanner(Planner):
-    def __init__(self, args, tool_params, model_path=None):
+    def __init__(self, args, plan_params, model_path=None):
         self.args = args
 
         self.chamfer_loss = ChamferLoss(args.loss_ord)
@@ -38,8 +39,8 @@ class ModelBasedPlanner(Planner):
             self.model = MPM(args)
         else:
             self.model = GNN(args, model_path)
-        self.tool_params = tool_params
-        self.act_len = int(tool_params['act_len'] / args.time_step)
+        self.plan_params = plan_params
+        self.act_len = int(plan_params['act_len'] / args.time_step)
 
         self.device = args.device
         self.batch_size = args.control_batch_size
@@ -50,38 +51,18 @@ class ModelBasedPlanner(Planner):
         self.CEM_sample_iter = args.CEM_sample_iter
         self.CEM_decay_factor = args.CEM_decay_factor
 
-        if 'gripper_asym' in args.env:
-            self.CEM_param_var = [1e-1, 1e-1, 1e-2]
-            self.sample_ratio = {1: (4, 8, 4)}
-        elif 'gripper_sym' in args.env:
-            self.CEM_param_var = [1e-1, 1e-1, 1e-2]
-            self.sample_ratio = {1: (4, 8, 4)}
-        elif 'press' in args.env or 'punch' in args.env:
-            if 'circle' in args.env:
-                self.CEM_param_var = [1e-2, 1e-2, 1e-2]
-                self.sample_ratio = {1: (4, 8, 4)}
-            else:
-                self.CEM_param_var = [1e-2, 1e-2, 1e-2, 1e-1]
-                self.sample_ratio = {1: (4, 4, 4, 2)}
-        elif 'roller' in args.env:
-            self.CEM_param_var = [1e-2, 1e-2, 1e-2, 1e-1]
-            self.sample_ratio = {1: (4, 4, 2, 4)}
-        else:
-            raise NotImplementedError
+        self.CEM_param_var = [1e-1, 1e-1, 1e-1, 1e-1, 1e-1]
+        self.sample_ratio = {1: (4, 8, 4, 4, 4)}
 
         if args.debug:
             # self.RS_sample_size = 8
+            self.batch_size = 1
             self.RS_elite_size_per_act = 1
             self.CEM_sample_size = 8
             self.CEM_elite_size = 2
             self.CEM_sample_iter = 2
             self.CEM_decay_factor = 0.5
-            if 'roller' in args.env:
-                self.sample_ratio = {1: (1, 1, 1, 4, 2)}
-            elif 'square' in args.env:
-                self.sample_ratio = {1: (1, 1, 4, 2)}
-            else:
-                self.sample_ratio = {1: (2, 2, 2)}
+            self.sample_ratio = {1: (2, 1, 1, 1, 1)}
 
 
     def plan(self, state_cur, target_shape, rollout_path, max_n_actions, rs_loss_threshold=float('inf')):
@@ -91,7 +72,7 @@ class ModelBasedPlanner(Planner):
 
         min_bounds = torch.min(state_cur, dim=1).values.squeeze().cpu().numpy()
         max_bounds = torch.max(state_cur, dim=1).values.squeeze().cpu().numpy()
-        self.param_bounds = get_param_bounds(self.args, self.tool_params, min_bounds, max_bounds)
+        self.param_bounds = get_param_bounds(self.plan_params, min_bounds, max_bounds)
 
         param_seq_pool, loss_seq_pool, state_seq_pool = self.random_search(
             state_cur, target_shape, max_n_actions)
@@ -136,18 +117,23 @@ class ModelBasedPlanner(Planner):
     @profile
     def rollout(self, param_seqs, state_cur, target_shape):
         B = self.batch_size
-        min_bounds = torch.min(state_cur, dim=1).values.squeeze().cpu().numpy()
-        init_pose_seqs = []
-        act_seqs = []
-        for param_seq in param_seqs:
-            init_pose_seq = params_to_init_pose(
-                self.args, self.center, self.tool_params, param_seq)
-            act_seq = params_to_actions(self.args, self.tool_params, param_seq, min_bounds)
-            init_pose_seqs.append(init_pose_seq)
-            act_seqs.append(act_seq)
+        # init_pose_seqs = []
+        # act_seqs = []
+        # for param_seq in param_seqs:
+        #     init_pose_seq = params_to_init_pose(self.args, self.center, self.plan_params, param_seq.cpu())
+        #     act_seq = params_to_actions(self.plan_params, param_seq.cpu())
+        #     init_pose_seqs.append(init_pose_seq)
+        #     act_seqs.append(act_seq)
 
-        init_pose_seqs = torch.stack(init_pose_seqs)
-        act_seqs = torch.stack(act_seqs)
+        # init_pose_seqs_backup = torch.stack(init_pose_seqs)
+        # act_seqs_backup = torch.stack(act_seqs)
+
+        init_pose_seqs = param_seqs_to_init_poses(self.args, self.center, self.plan_params, param_seqs)
+        act_seqs = param_seqs_to_actions(self.plan_params, param_seqs)
+
+        # import pdb; pdb.set_trace()
+        # print(torch.where(init_pose_seqs_backup - init_pose_seqs.cpu() > 0.0001))
+        # print(torch.where(act_seqs_backup - act_seqs.cpu() > 0.0001))
 
         n_batch = int(np.ceil(param_seqs.shape[0] / B))
         state_seqs = []
@@ -156,7 +142,8 @@ class ModelBasedPlanner(Planner):
         for i in batch_iterator:
             start = B * i
             end = min(B * (i + 1), param_seqs.shape[0])
-            state_seq, _, _ = self.model.rollout(state_cur, init_pose_seqs[start: end], act_seqs[start: end])
+            state_seq, _, _ = self.model.rollout(state_cur, init_pose_seqs[start: end], 
+                act_seqs[start: end], param_seqs[start: end, :, 1])
             loss_seq = self.evaluate_traj(state_seq, target_shape, self.args.control_loss_type)
             state_seqs.append(state_seq)
             loss_seqs.append(loss_seq)
@@ -197,15 +184,15 @@ class ModelBasedPlanner(Planner):
                 state_cur_norm, state_goal_norm = normalize_state(self.args, state_cur, state_goal, pkg='torch')
 
                 if loss_type == "emd":
-                    loss = self.emd_loss(state_cur_norm, state_goal_norm).cpu()
+                    loss = self.emd_loss(state_cur_norm, state_goal_norm)
                 elif loss_type == "chamfer":
-                    loss = self.chamfer_loss(state_cur_norm, state_goal_norm).cpu()
+                    loss = self.chamfer_loss(state_cur_norm, state_goal_norm)
                 elif loss_type == "chamfer_emd":
                     loss = 0
-                    loss += self.args.emd_weight * self.emd_loss(state_cur_norm, state_goal_norm).cpu()
-                    loss += self.args.chamfer_weight * self.chamfer_loss(state_cur_norm, state_goal_norm).cpu()
+                    loss += self.args.emd_weight * self.emd_loss(state_cur_norm, state_goal_norm)
+                    loss += self.args.chamfer_weight * self.chamfer_loss(state_cur_norm, state_goal_norm)
                 elif loss_type == "L1_pos":
-                    loss = F.l1_loss(state_cur_norm, state_goal_norm).cpu()
+                    loss = F.l1_loss(state_cur_norm, state_goal_norm)
                 elif loss_type == "iou": # complement of IOU
                     state_cur_upsample = upsample(state_cur[0], visualize=False)
                     loss = 1 - iou(state_cur_upsample, target_shape['dense'], voxel_size=0.003, visualize=False)
@@ -219,35 +206,20 @@ class ModelBasedPlanner(Planner):
 
             loss_seqs.append(torch.stack(loss_seq))
 
-        loss_seqs = torch.stack(loss_seqs).cpu()
+        loss_seqs = torch.stack(loss_seqs)
         
         return loss_seqs
 
 
     def eval_soln(self, param_seq, state_cur, target_shape):
-        # evaluate and store results
-        min_bounds = torch.min(state_cur, dim=1).values.squeeze().cpu().numpy()
-        init_pose_seq = params_to_init_pose(
-            self.args, self.center, self.tool_params, param_seq)
-        act_seq = params_to_actions(self.args, self.tool_params, param_seq, min_bounds)
+        init_pose_seqs = param_seqs_to_init_poses(self.args, self.center, self.plan_params, param_seq.unsqueeze(0))
+        act_seqs = param_seqs_to_actions(self.plan_params, param_seq.unsqueeze(0))
 
         if 'sim' in self.args.planner_type:
-            state_seq, _, _ = self.model.rollout(state_cur, init_pose_seq.unsqueeze(0), act_seq.unsqueeze(0),
+            state_seq, _, _ = self.model.rollout(state_cur, init_pose_seqs, act_seqs, param_seq[:, 1].unsqueeze(0), 
                 os.path.join(self.rollout_path, 'anim'))
         else:
-            state_seq, _, _ = self.model.rollout(state_cur, init_pose_seq.unsqueeze(0), act_seq.unsqueeze(0))
-        # attn_mask_pred = np.squeeze(attn_mask_pred.cpu().numpy()[0])
-        # attn_mask_pred = np.concatenate((np.zeros((self.args.n_his, self.args.n_particles)), attn_mask_pred), axis=0)
-
-        # rels_pred = rels_pred[0]
-        # max_n_rel = max([rels.shape[0] for rels in rels_pred])
-        # for i in range(len(rels_pred)):
-        #     rels_pred[i] = np.concatenate((np.zeros((max_n_rel - rels_pred[i].shape[0], 
-        #         rels_pred[i].shape[1]), dtype=np.int16), rels_pred[i]), axis=0)
-        
-        # rels_pred = np.stack(rels_pred)
-        # rels_pred = np.concatenate((rels_pred, np.zeros((self.args.n_his, max_n_rel, rels_pred[0].shape[1]), 
-        #     dtype=np.int16)), axis=0)
+            state_seq, _, _ = self.model.rollout(state_cur, init_pose_seqs, act_seqs, param_seq[:, 1].unsqueeze(0))
 
         self.render_state(state_seq.squeeze()[-1:], target_shape)
         loss_gnn = self.evaluate_traj(state_seq, target_shape, self.args.control_loss_type)[0][-1].item()
@@ -260,8 +232,9 @@ class ModelBasedPlanner(Planner):
             if i > 0: title += '\n'
             title += f'{[[round(x.item(), 3) for x in y] for y in param_seq[i:i+2]]}'
         title += f' -> {round(loss_gnn, 4)}'
-        act_seq_sparse = params_to_actions(self.args, self.tool_params, param_seq, min_bounds, step=self.args.time_step)
-        state_seq_wshape = add_shape_to_seq(self.args, state_seq.squeeze().cpu().numpy(), init_pose_seq.cpu().numpy(), act_seq_sparse.cpu().numpy())
+        act_seqs_sparse = param_seqs_to_actions(self.plan_params, param_seq.unsqueeze(0), step=self.args.time_step)
+        state_seq_wshape = add_shape_to_seq(self.args, state_seq.squeeze().cpu().numpy(), 
+            init_pose_seqs[0].cpu().numpy(), act_seqs_sparse[0].cpu().numpy())
 
         pkl_path = os.path.join(self.rollout_path, 'anim_args', 
             f'{self.args.env}_anim_{datetime.now().strftime("%b-%d-%H:%M:%S")}_args.pkl')
@@ -440,8 +413,8 @@ class ModelBasedPlanner(Planner):
             title += f' -> {round(loss_opt[i].item(), 4)}'
             row_titles.append(title)
             init_pose_seq = params_to_init_pose(
-                self.args, self.center, self.tool_params, param_seq_opt[i])
-            act_seq = params_to_actions(self.args, self.tool_params, param_seq_opt[i], min_bounds, step=self.args.time_step)
+                self.args, self.center, self.plan_params, param_seq_opt[i])
+            act_seq = params_to_actions(self.plan_params, param_seq_opt[i], step=self.args.time_step)
             state_seq_wshape = add_shape_to_seq(self.args, state_seq_opt[i].cpu().numpy(), 
                 init_pose_seq.cpu().numpy(), act_seq.cpu().numpy())
             state_seq_wshape_list.append(state_seq_wshape)
@@ -500,8 +473,14 @@ class ModelBasedPlanner(Planner):
             print(f"Trajectory {i+1}/{len(param_seq_pool)}:")
 
             param_seq_cand = param_seq_pool[i].detach().requires_grad_()
-            loss_list = []
 
+            loss, state_seq = self.rollout(param_seq_cand.contiguous().unsqueeze(0), state_cur, target_shape)
+            get_dot = register_hooks(loss)
+            loss.backward()
+            dot = get_dot()
+            dot.render('tmp')
+
+            loss_list = []
             def loss_func(param_seq):
                 nonlocal loss_list
                 # print(f"Params: {param_seq_opt}")
@@ -516,10 +495,10 @@ class ModelBasedPlanner(Planner):
                 loss_func, param_seq_cand.contiguous(), 
                 method='l-bfgs', 
                 options=dict(lr=1e-1, line_search='strong-wolfe'),
-                disp=2
+                disp=2,
             )
 
-            # print(res)
+            print(res)
             # param_seq_clamped = torch.clamp(
             #     res.x, min=self.param_bounds[:, 0], max=self.param_bounds[:, 1])
             param_seq_opt.append(res.x)
@@ -534,4 +513,4 @@ class ModelBasedPlanner(Planner):
         plot_eval_loss('Control GD Loss', loss_list_dict, 
             path=os.path.join(self.rollout_path, 'optim_plots', f"{self.args.env}_GD_loss"))
 
-        return param_seq_opt[best_idx]
+        return param_seq_opt[best_idx].cpu()

@@ -4,6 +4,7 @@ import torch
 from datetime import datetime
 from utils.data_utils import *
 from pytorch3d.transforms import *
+from transforms3d.quaternions import *
 
 
 def normalize_state(args, state_cur, state_goal, pkg='numpy'):
@@ -52,95 +53,146 @@ def normalize_state(args, state_cur, state_goal, pkg='numpy'):
     return state_cur_norm, state_goal_norm
 
 
-def get_param_bounds(args, tool_params, min_bounds, max_bounds):
+def get_param_bounds(tool_params, min_bounds, max_bounds):
     param_bounds = []
-    if 'gripper' in args.env:
-        r = min(max_bounds[:2] - min_bounds[:2]) / 2
-        param_bounds.append([-r, r])
-    else:
-        pos_x_bounds = [-tool_params["x_noise"], tool_params["x_noise"]]
-        pos_y_bounds = [-tool_params["y_noise"], tool_params["y_noise"]]
-        if 'roller' in args.env:
-            pos_z_bounds = [0.5 * (max_bounds[2] - min_bounds[2]), max_bounds[2] - min_bounds[2]]
-        else:
-            pos_z_bounds = [0.0, max_bounds[2] - min_bounds[2]]
-
-        param_bounds.extend([pos_x_bounds, pos_y_bounds, pos_z_bounds])
-
-    if not 'circle' in args.env:
-        param_bounds.append(tool_params["rot_range"])
-
-    if 'gripper' in args.env:
-        param_bounds.append([tool_params["grip_min"], min(r, 0.04)])
-
-    # if 'roller' in args.env:
-    #     param_bounds.append(tool_params["roll_range"])
+    r = min(max_bounds[:2] - min_bounds[:2]) / 2
+    param_bounds.append([0, r])
+    param_bounds.append(tool_params["theta_range"])
+    param_bounds.append(tool_params["phi1_range"])
+    param_bounds.append(tool_params["phi2_range"])
+    param_bounds.append([tool_params["grip_min"], min(2*r, 0.08)])
 
     return torch.FloatTensor(np.array(param_bounds))
 
 
-def params_to_init_pose(args, center, tool_params, param_seq):
+def param_seqs_to_init_poses(args, center, plan_params, param_seqs):
+    device = param_seqs.device
+    dough_center = center.to(device)
+    B = param_seqs.shape[0] * param_seqs.shape[1]
+    ps = param_seqs.view(B, -1)
+    ee_fingertip_T_mat = expand(B, torch.tensor(args.ee_fingertip_T_mat, dtype=torch.float32, device=device).unsqueeze(0))
+    
+    a = torch.tensor([0, 1, 0, 0], dtype=torch.float32, device=device)
+    rmat = expand(B, quaternion_to_matrix(a).unsqueeze(0))
+    
+    b = expand(B, torch.tensor([[[0, 0, 0, 1]]], dtype=torch.float32, device=device))
+
+    r_z = torch.tile(torch.tensor([0, 0, 0 - np.pi / 4], dtype=torch.float32, device=device), (B, 1))
+    rmat_z = axis_angle_to_matrix(r_z)
+
+    r_x_scaled = ps[:, 3] / np.sqrt(2)
+    r_x = torch.stack((r_x_scaled, r_x_scaled, torch.zeros_like(r_x_scaled)), dim=-1)
+    rmat_x = axis_angle_to_matrix(r_x)
+
+    pos_delta = torch.stack(
+        ((-ps[:, 0] * torch.sin(ps[:, 2]) + args.tool_center_z * torch.sin(ps[:, 3])) * 0.0, # torch.cos(0 - np.pi / 2) 
+        (-ps[:, 0] * torch.sin(ps[:, 2]) + args.tool_center_z * torch.sin(ps[:, 3])) * -1.0, # torch.sin(0 - np.pi / 2)
+        ps[:, 0] * torch.cos(ps[:, 2]) + args.tool_center_z * torch.cos(ps[:, 3])), dim=-1
+    )
+
+    # ee_quat = qmult([0, 1, 0, 0], qmult(axangle2quat([0, 0, 1], 0 - np.pi / 4), 
+    #     axangle2quat([1, 1, 0], phi2)))
+    # ee_rot = quaternion_to_matrix(torch.FloatTensor(ee_quat))
+
+    fingermid_pos = pos_delta + dough_center
+    ee_rot = rmat.bmm(rmat_z.bmm(rmat_x))
+    fingertip_mat = ee_rot.bmm(ee_fingertip_T_mat[:, :3, :3])
+
+    fingertip_T_list = []
+    for k in range(len(args.tool_dim[args.env])):
+        offset = torch.tensor([0, (2 * k - 1) * (plan_params["init_grip"] / 2), 0], dtype=torch.float32, device=device)
+        offset_batch = expand(B, offset.unsqueeze(0)).unsqueeze(-1)
+        fingertip_pos = fingertip_mat.bmm(offset_batch).squeeze() + fingermid_pos
+
+        fingertip_T = torch.cat((torch.cat((fingertip_mat, fingertip_pos.unsqueeze(-1)), dim=-1), b), dim=1)
+        fingertip_T_list.append(fingertip_T)
+
+    fingertip_T_batch = torch.swapaxes(torch.stack(fingertip_T_list), 0, 1)
+    
+    init_pose_seq = []
+    for i in range(B):
+        # print(fingertip_T_batch[i])
+        tool_repr = get_tool_repr(args, fingertip_T_batch[i], pkg='torch')
+        init_pose_seq.append(tool_repr)
+
+    init_pose_seqs = torch.stack(init_pose_seq).view(param_seqs.shape[0], param_seqs.shape[1], -1, 3)
+
+    return init_pose_seqs
+
+
+def get_fingermid_pos(center, r, dist, phi1, phi2):
+    center_x, center_y, center_z = center
+    pos_x = center_x + (-r * torch.sin(phi1) + dist * torch.sin(phi2)) * 0.0 # torch.cos(0 - np.pi / 2) 
+    pos_y = center_y + (-r * torch.sin(phi1) + dist * torch.sin(phi2)) * -1.0 # torch.sin(0 - np.pi / 2)
+    pos_z = center_z + r * torch.cos(phi1) + dist * torch.cos(phi2)
+    return torch.FloatTensor([pos_x, pos_y, pos_z])
+
+
+def params_to_init_pose(args, center, plan_params, param_seq):
     ee_fingertip_T_mat = torch.FloatTensor(args.ee_fingertip_T_mat)
 
     init_pose_seq = []
     for params in param_seq:
-        if 'gripper' in args.env:
-            rot_noise = params[1]
-            ee_pos = torch.FloatTensor([
-                center[0] - params[0] * torch.sin(rot_noise - np.pi / 4), 
-                center[1] + params[0] * torch.cos(rot_noise - np.pi / 4), 
-                tool_params["init_h"] 
-            ])
-        else:
-            ee_pos = torch.cat((center[:2] + params[:2], torch.FloatTensor([tool_params["init_h"]])))
-            if 'circle' in args.env:
-                rot_noise = torch.zeros(1).squeeze()
-            else:
-                rot_noise = params[3]
+        r, theta, phi1, phi2, grip_width = params
 
-        ee_angle = torch.cat([torch.zeros(2), rot_noise.unsqueeze(0)])
-        ee_rot = euler_angles_to_matrix(ee_angle, 'XYZ') @ \
-            quaternion_to_matrix(torch.FloatTensor([0, 1, 0, 0]))
+        fingermid_pos = get_fingermid_pos(center, r, args.tool_center_z, phi1, phi2)
+        ee_quat = qmult([0, 1, 0, 0], qmult(axangle2quat([0, 0, 1], 0 - np.pi / 4), 
+            axangle2quat([1, 1, 0], phi2)))
+        ee_rot = quaternion_to_matrix(torch.FloatTensor(ee_quat))
 
-        fingertip_mat = ee_fingertip_T_mat[:3, :3] @ ee_rot
-        fingermid_pos = (ee_rot @ ee_fingertip_T_mat[:3, 3]) + ee_pos
+        fingertip_mat = ee_rot @ ee_fingertip_T_mat[:3, :3]
 
         fingertip_T_list = []
         for k in range(len(args.tool_dim[args.env])):
-            if 'gripper' in args.env:
-                offset = torch.FloatTensor([(1 - 2 * k) * tool_params["init_grip"], 0, 0])
-                fingertip_pos = (fingertip_mat @ offset) + fingermid_pos
-            else:
-                fingertip_pos = fingermid_pos.float()
-            
-            fingertip_T = torch.cat((torch.cat((
-                fingertip_mat, fingertip_pos.unsqueeze(1)), dim=1), 
+            offset = torch.FloatTensor([0, (2 * k - 1) * (plan_params["init_grip"] / 2), 0])
+            fingertip_pos = fingertip_mat @ offset + fingermid_pos
+            fingertip_T = torch.cat((torch.cat((fingertip_mat, fingertip_pos.unsqueeze(1)), dim=1), 
                 torch.FloatTensor([[0, 0, 0, 1]])), dim=0)
             fingertip_T_list.append(fingertip_T)
 
-        tool_repr = get_tool_repr(args, fingertip_T_list, pkg='torch')
+        fingertip_T_batch = torch.stack(fingertip_T_list)
+        # print(fingertip_T_batch)
+        tool_repr = get_tool_repr(args, fingertip_T_batch, pkg='torch')
         init_pose_seq.append(tool_repr)
 
     return torch.stack(init_pose_seq)
 
 
-def params_to_actions(args, tool_params, param_seq, min_bounds, step=1):
+def param_seqs_to_actions(tool_params, param_seqs, step=1):
+    device = param_seqs.device
+    B = param_seqs.shape[0] * param_seqs.shape[1]
+    ps = param_seqs.view(B, -1)
+
+    zero_pad = torch.zeros((B, 3), dtype=torch.float32, device=device)
+    act_seq_list = []
+    grip_rate = ((tool_params['init_grip'] - ps[:, -1]) / 2) / (tool_params['act_len'] / step)
+    for _ in range(0, tool_params['act_len'], step):
+        x = grip_rate * np.sin(np.pi / 2)
+        y = grip_rate * np.cos(np.pi / 2)
+        gripper_l_act = torch.stack((x, y, torch.zeros(B, dtype=torch.float32, device=device)), dim=-1)
+        gripper_r_act = 0 - gripper_l_act
+        act = torch.cat((gripper_l_act, zero_pad, gripper_r_act, zero_pad), dim=-1)
+        act_seq_list.append(act)
+
+    act_seqs = torch.stack(act_seq_list, dim=1).view(param_seqs.shape[0], param_seqs.shape[1], -1, 12)
+
+    return act_seqs
+
+
+def params_to_actions(tool_params, param_seq, step=1):
     zero_pad = torch.zeros(3)
     act_seq = []
     for params in param_seq:
         actions = []
-        if 'gripper' in args.env:
-            _, rot_noise, grip_width = params
-            grip_rate = (tool_params['init_grip'] - grip_width * 0.5) / (tool_params['act_len'] / step)
-            for _ in range(0, tool_params['act_len'], step):
-                x = -grip_rate * torch.sin(rot_noise + np.pi / 4)
-                y = grip_rate * torch.cos(rot_noise + np.pi / 4)
-                gripper_l_act = torch.cat([x.unsqueeze(0), y.unsqueeze(0), torch.zeros(1)])
-                gripper_r_act = 0 - gripper_l_act
-                act = torch.cat((gripper_l_act, zero_pad, gripper_r_act, zero_pad))
-                actions.append(act)
-        else:
-            raise NotImplementedError
+        r, theta, phi1, phi2, grip_width = params
+        grip_rate = ((tool_params['init_grip'] - grip_width) / 2) / (tool_params['act_len'] / step)
+        for _ in range(0, tool_params['act_len'], step):
+            x = grip_rate * np.sin(np.pi / 2) 
+            y = grip_rate * np.cos(np.pi / 2) 
+            gripper_l_act = torch.cat([x.unsqueeze(0), y.unsqueeze(0), torch.zeros(1)])
+            gripper_r_act = 0 - gripper_l_act
+            act = torch.cat((gripper_l_act, zero_pad, gripper_r_act, zero_pad))
+            actions.append(act)
 
         act_seq.append(torch.stack(actions))
 

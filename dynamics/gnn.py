@@ -48,17 +48,21 @@ class GNN(object):
         state_cur,      # [N, state_dim]
         init_pose_seqs, # [B, n_grip, n_shape, 14]
         act_seqs,       # [B, n_grip, n_steps, 12]
+        rot_seqs,       # [B, n_grip]
     ):
         # preprocess the tensors
         if not torch.is_tensor(init_pose_seqs):
             init_pose_seqs = torch.tensor(init_pose_seqs)
         if not torch.is_tensor(act_seqs):
             act_seqs = torch.tensor(act_seqs)
+        if not torch.is_tensor(rot_seqs):
+            rot_seqs = torch.tensor(rot_seqs)
         if not torch.is_tensor(state_cur):
             state_cur = torch.tensor(state_cur)
 
         init_pose_seqs = init_pose_seqs.float().to(self.device)
         act_seqs = act_seqs.float().to(self.device)
+        rot_seqs = rot_seqs.float().to(self.device)
         
         B = init_pose_seqs.shape[0]
         if len(state_cur.shape) == 3:
@@ -72,39 +76,19 @@ class GNN(object):
             floor_state = torch.tensor(self.args.floor_state)
         floor_state = expand(B, floor_state.float().unsqueeze(0)).to(self.device)
 
-        return init_pose_seqs, act_seqs, state_cur, floor_state
+        return init_pose_seqs, act_seqs, rot_seqs, state_cur, floor_state
 
 
-    def move(self, tool_pos, actions, k):
-        tool_pos = copy.deepcopy(tool_pos)
-        for i in range(actions.shape[1]):
-            tool_pos += actions[:, i, 6*k:6*k+3].unsqueeze(1).expand(-1, self.args.tool_dim[self.args.env][k], -1)
-            act_rot = actions[:, i, 6*k+3:6*k+6]
+    def rotate_state(self, state_cur, theta, center_xy=[0.429, -0.008]):
+        B = state_cur.shape[0]
+        zero_padding = torch.zeros_like(theta, device=self.device)
+        center_xy = torch.tensor(center_xy, device=self.device, dtype=torch.float32)
+        center = torch.cat([torch.tile(center_xy, (B, 1, 1)), torch.mean(state_cur, dim=1)[:, 2:3].unsqueeze(1)], dim=2)
 
-            if self.args.full_repr and 'roller' in self.args.env and torch.any(act_rot):
-                act_trans = torch.mean(tool_pos, dim=1).unsqueeze(1).expand(-1, self.args.tool_dim[self.args.env][k], -1)
-                act_rot_mat = []
-                for b in range(actions.shape[0]):
-                    # rot_axis = [-act_seqs[b, i, j, 6*k+1].item(), act_seqs[b, i, j, 6*k].item(), 0]
-                    if 'large' in self.args.env:
-                        rot_axis = -torch.cross(tool_pos[b, 0] - tool_pos[b, 1], 
-                            tool_pos[b, 0] - tool_pos[b, 2])
-                    else:
-                        if self.args.stage == 'dy':
-                            rot_axis = torch.cross(tool_pos[b, 0] - tool_pos[b, 1], 
-                                tool_pos[b, 0] - tool_pos[b, 2])
-                        else:
-                            rot_axis = torch.cross(tool_pos[b, 0] - tool_pos[b, 1], 
-                                tool_pos[b, 0] - tool_pos[b, 42])
-                    act_rot_mat.append(axangle2mat(rot_axis.detach().cpu().numpy(), act_rot[b, 0].detach().cpu().numpy()))
+        state_rot = euler_angles_to_matrix(torch.stack((zero_padding, zero_padding, theta), dim=-1), 'XYZ')
+        state_cur_new = (state_cur - center).bmm(state_rot) + center
 
-                act_rot_mat = torch.tensor(np.array(act_rot_mat), device=self.device, dtype=torch.float32)
-                tool_pos -= act_trans
-                rot_T = Rotate(act_rot_mat, device=self.device, dtype=torch.float32)
-                tool_pos = rot_T.transform_points(tool_pos)
-                tool_pos += act_trans
-
-        return tool_pos
+        return state_cur_new
 
 
     # @profile
@@ -113,10 +97,12 @@ class GNN(object):
         state_cur,      # [N, state_dim]
         init_pose_seqs, # [B, n_grip, n_shape, 14]
         act_seqs,       # [B, n_grip, n_steps, 12]
+        rot_seqs,       # [B, n_grip]
     ):
         # reshape the tensors
         B = init_pose_seqs.shape[0]
-        init_pose_seqs, act_seqs, state_cur, floor_state = self.prepare_shape(state_cur, init_pose_seqs, act_seqs)
+        init_pose_seqs, act_seqs, rot_seqs, state_cur, floor_state = self.prepare_shape(
+            state_cur, init_pose_seqs, act_seqs, rot_seqs)
 
         N = self.args.n_particles + sum(self.args.tool_dim[self.args.env]) + self.args.floor_dim
         memory_init = self.model.init_memory(init_pose_seqs.shape[0], N)
@@ -137,7 +123,7 @@ class GNN(object):
         tool_start_idx = self.args.n_particles + self.args.floor_dim
 
         # object attributes
-        attr_dim = 4 if 'gripper_asym' in self.args.env else 3
+        attr_dim = 3
         attrs = torch.zeros((B, N, attr_dim), device=self.device)
         attrs[:, self.args.n_particles: tool_start_idx, 1] = 1
         # since the two tools in gripper_asym have different attributes
@@ -174,9 +160,9 @@ class GNN(object):
                 for k in range(len(self.args.tool_dim[self.args.env])):
                     tool_his_list = [tool_pos_list[k].unsqueeze(1)]
                     for ii in range(j, j + self.args.n_his*self.args.time_step):
-                        tool_pos = self.move(tool_pos_list[k][:, :, :3], act_seqs[:, i, ii:ii+1], k)
+                        action_aug = act_seqs[:, i, ii:ii+1, 6*k:6*k+3].unsqueeze(2).expand(-1, -1, self.args.tool_dim[self.args.env][k], -1)
+                        tool_pos = tool_pos_list[k][:, :, :3] + torch.sum(action_aug, dim=1)
                         if self.args.state_dim == 6:
-                            # tool_normals = get_normals(tool_pos, pkg='torch').to(self.device)
                             tool_pos_list[k] = torch.cat((tool_pos, tool_pos_list[k][:, :, 3:]), dim=2)
                         else:
                             tool_pos_list[k] = tool_pos
@@ -185,17 +171,16 @@ class GNN(object):
                     action_his_list.append(tool_his_list)
 
                 if i == 0 and j == 0:
-                    if self.args.state_dim == 6 and state_cur.shape[2] == 3:
-                        normals_cur = get_normals(state_cur, pkg='torch').to(self.device)
-                        state_cur = torch.cat([state_cur, normals_cur], dim=2)
-                    else:
-                        state_cur = state_cur[:, :self.args.n_particles]
+                    state_cur = state_cur[:, :self.args.n_particles, :3]
                 else:
-                    if self.args.state_dim == 6:
-                        normals_pred = get_normals(pred_pos_p, pkg='torch').to(self.device)
-                        state_cur = torch.cat([pred_pos_p, normals_pred], dim=2)
-                    else:
-                        state_cur = pred_pos_p
+                    state_cur = pred_pos_p
+
+                if j == 0:
+                    state_cur = self.rotate_state(state_cur, rot_seqs[:, i])
+
+                if self.args.state_dim == 6:
+                    normals_cur = get_normals(state_cur, pkg='torch').to(self.device)
+                    state_cur = torch.cat([state_cur, normals_cur], dim=2)
 
                 state_cur = torch.cat([state_cur, floor_state, *tool_pos_list], dim=1)
                 action_his = torch.cat([torch.cat(x, dim=1) for x in action_his_list], dim=2)

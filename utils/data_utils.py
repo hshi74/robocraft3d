@@ -229,17 +229,17 @@ def get_normals(points, pkg='numpy'):
         return np.stack(tool_normals_list)
 
 
-def get_tool_repr(args, fingertip_T_list, pkg='numpy'):
+def get_tool_repr(args, fingertip_T_batch, pkg='numpy'):
     tool_dim_list = args.tool_dim[args.env]
     if args.full_repr:
         tool_repr_list = []
-        for i in range(len(fingertip_T_list)):
+        for i in range(fingertip_T_batch.shape[0]):
             if pkg == 'numpy':
-                tool_repr_part = (fingertip_T_list[i][:3, :3] @ np.array(args.tool_full_repr_dict[args.env][i]).T).T + \
-                    np.tile(fingertip_T_list[i][:3, 3], (tool_dim_list[i], 1))
+                tool_repr_part = (fingertip_T_batch[i, :3, :3] @ np.array(args.tool_full_repr_dict[args.env][i]).T).T + \
+                    np.tile(fingertip_T_batch[i, :3, 3], (tool_dim_list[i], 1))
             else:
-                tool_repr_part = (fingertip_T_list[i][:3, :3] @ torch.FloatTensor(args.tool_full_repr_dict[args.env][i]).T).T + \
-                    torch.tile(fingertip_T_list[i][:3, 3], (tool_dim_list[i], 1))
+                tool_full_repr = torch.tensor(args.tool_full_repr_dict[args.env][i], dtype=torch.float32, device=fingertip_T_batch.device)
+                tool_repr_part = (fingertip_T_batch[i, :3, :3] @ tool_full_repr.T).T  + torch.tile(fingertip_T_batch[i, :3, 3], (tool_dim_list[i], 1))
             tool_repr_list.append(tool_repr_part)
 
         if pkg == 'numpy':

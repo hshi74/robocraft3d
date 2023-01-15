@@ -161,6 +161,8 @@ def gen_args_env(args):
     ##### robot #####
     # if args.stage != 'dy':
     args.ee_fingertip_T_mat = np.array([[0.707, 0.707, 0, 0], [-0.707, 0.707, 0, 0], [0, 0, 1, 0.1034], [0, 0, 0, 1]])
+    # 5cm: 0.042192, 7cm: 0.052192, 8cm: 0.057192
+    args.tool_center_z = 0.057192
 
     mid_point_sim = np.array([0.5, 0.1, 0.5])
     # robocraft
@@ -254,7 +256,7 @@ def gen_args_pipeline(args):
     return args
 
 
-def update_dy_args(args, name, dy_args_dict):
+def update_dy_args(args, dy_args_dict):
     args.surface_sample = dy_args_dict['surface_sample']
     args.rigid_motion = dy_args_dict['rigid_motion']
     args.attn = dy_args_dict['attn']
