@@ -77,7 +77,7 @@ def merge_point_cloud(args, pcd_msgs, crop_range=None, visualize=False):
             # cl, inlier_ind = pcd_all.remove_statistical_outlier(nb_neighbors=100, std_ratio=2.0)
             # pcd_all = pcd_all.select_by_index(inlier_ind)
     
-            visualize_o3d([pcd_all], view_point=view_point, title='merged_raw_point_cloud')
+            visualize_o3d([pcd_all], view_point=view_point, title='merged_raw_point_cloud', show_frame=False)
         else:
             # cl, inlier_ind = pcd_all.remove_statistical_outlier(nb_neighbors=100, std_ratio=2.0)
             # pcd_all = pcd_all.select_by_index(inlier_ind)
@@ -131,7 +131,7 @@ def preprocess_raw_pcd(args, pcd_all, rm_stats_outliers=2, visualize=False):
         outliers = None
         outlier_stat = None
         # remove until there's no new outlier
-        while outlier_stat is None or len(outlier_stat.points) > 0:
+        while rm_iter < 1: # outlier_stat is None or len(outlier_stat.points) > 0:
             cl, inlier_ind_cube_stat = cube.remove_statistical_outlier(nb_neighbors=50, std_ratio=1.5+0.5*rm_iter)
             cube_stat = cube.select_by_index(inlier_ind_cube_stat)
             outlier_stat = cube.select_by_index(inlier_ind_cube_stat, invert=True)

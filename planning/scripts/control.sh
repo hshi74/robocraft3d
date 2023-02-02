@@ -21,4 +21,4 @@ kernprof -l planning/control.py \
 	--subtarget $7 \
 	--close_loop $8 \
 	--planner_type $9 \
-
+	--max_n_actions ${10}

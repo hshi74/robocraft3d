@@ -2,8 +2,6 @@ import copy
 import numpy as np
 import torch
 
-from precoded_planner import *
-from learned_planner import LearnedPlanner
 from model_based_planner import ModelBasedPlanner
 from timeit import default_timer as timer
 from config.config import update_dy_args
@@ -11,7 +9,7 @@ from utils.visualize import *
 
 
 class Tool(object):
-    def __init__(self, args, name, planner_type, tool_params=None, tool_model_path_list=None):
+    def __init__(self, args, name, planner_type, tool_params=None, tool_model_path_list=None, is_3d=False):
         self.name = name
         self.planner_type = planner_type
 
@@ -20,7 +18,7 @@ class Tool(object):
             tool_args_dict = np.load(f'{tool_model_path_list[0]}_args.npy', allow_pickle=True).item()
             tool_args = update_dy_args(tool_args, tool_args_dict)
             tool_args.env = name
-            self.planner = ModelBasedPlanner(tool_args, tool_params, model_path=f'{tool_model_path_list[0]}.pth')
+            self.planner = ModelBasedPlanner(tool_args, tool_params, model_path=f'{tool_model_path_list[0]}.pth', is_3d=is_3d)
         elif 'sim' in planner_type:
             tool_args = copy.deepcopy(args)
             tool_args.env = name

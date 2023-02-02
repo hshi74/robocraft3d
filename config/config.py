@@ -162,7 +162,7 @@ def gen_args_env(args):
     # if args.stage != 'dy':
     args.ee_fingertip_T_mat = np.array([[0.707, 0.707, 0, 0], [-0.707, 0.707, 0, 0], [0, 0, 1, 0.1034], [0, 0, 0, 1]])
     # 5cm: 0.042192, 7cm: 0.052192, 8cm: 0.057192
-    args.tool_center_z = 0.057192
+    args.tool_center_z = 0.06472
 
     mid_point_sim = np.array([0.5, 0.1, 0.5])
     # robocraft
@@ -191,7 +191,7 @@ def gen_args_env(args):
 
     ##### tools #####
     args.tool_geom_mapping = {
-        'gripper_sym_rod': ['gripper_l_8', 'gripper_r_8'],
+        'gripper_sym_rod': ['gripper_l_8', 'gripper_r_8'], # ['gripper_l', 'gripper_r'],
     }
 
     args.tool_sim_primitive_mapping = {
@@ -204,7 +204,7 @@ def gen_args_env(args):
 
     if args.full_repr:
         args.tool_dim = {
-            'gripper_sym_rod': [182, 182],
+            'gripper_sym_rod': [182, 182] # [92, 92],
         }
     else:
         raise NotImplementedError

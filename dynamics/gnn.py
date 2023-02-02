@@ -55,14 +55,16 @@ class GNN(object):
             init_pose_seqs = torch.tensor(init_pose_seqs)
         if not torch.is_tensor(act_seqs):
             act_seqs = torch.tensor(act_seqs)
-        if not torch.is_tensor(rot_seqs):
-            rot_seqs = torch.tensor(rot_seqs)
         if not torch.is_tensor(state_cur):
             state_cur = torch.tensor(state_cur)
 
         init_pose_seqs = init_pose_seqs.float().to(self.device)
         act_seqs = act_seqs.float().to(self.device)
-        rot_seqs = rot_seqs.float().to(self.device)
+        
+        if rot_seqs is not None:
+            if not torch.is_tensor(rot_seqs):
+                rot_seqs = torch.tensor(rot_seqs)
+            rot_seqs = rot_seqs.float().to(self.device)
         
         B = init_pose_seqs.shape[0]
         if len(state_cur.shape) == 3:
@@ -97,7 +99,7 @@ class GNN(object):
         state_cur,      # [N, state_dim]
         init_pose_seqs, # [B, n_grip, n_shape, 14]
         act_seqs,       # [B, n_grip, n_steps, 12]
-        rot_seqs,       # [B, n_grip]
+        rot_seqs=None,       # [B, n_grip]
     ):
         # reshape the tensors
         B = init_pose_seqs.shape[0]
@@ -175,7 +177,7 @@ class GNN(object):
                 else:
                     state_cur = pred_pos_p
 
-                if j == 0:
+                if j == 0 and rot_seqs is not None:
                     state_cur = self.rotate_state(state_cur, rot_seqs[:, i])
 
                 if self.args.state_dim == 6:

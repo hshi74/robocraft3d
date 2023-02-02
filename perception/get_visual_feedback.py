@@ -151,10 +151,7 @@ def ros_bag_to_pcd(args, bag_path, use_vg_filter=False, visualize=False):
 
     has_robot_info = ee_pos is not None and ee_quat is not None and gripper_width is not None 
 
-    if 'hook' in args.env or 'spatula_large' in args.env or 'spatula_small' in args.env: # 'out.bag' in bag_path
-        pcd = merge_point_cloud(args, pcd_msgs, crop_range=[-0.1, -0.25, 0.02, 0.1, -0.05, 0.08], visualize=visualize)
-    else:
-        pcd = merge_point_cloud(args, pcd_msgs, crop_range=[-0.05, -0.05, 0.002, 0.1, 0.1, 0.07], visualize=visualize)
+    pcd = merge_point_cloud(args, pcd_msgs, crop_range=None, visualize=visualize)
 
     pcd_dense, pcd_sparse = sample(args, pcd, use_vg_filter=use_vg_filter, visualize=visualize)
 

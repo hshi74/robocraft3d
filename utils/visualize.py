@@ -11,6 +11,8 @@ import os
 import pickle
 import pymeshfix
 import pyvista as pv
+import seaborn as sns
+# sns.set_theme(style="darkgrid")
 import sys
 import torch
 import torchvision.transforms as transforms
@@ -66,7 +68,9 @@ def plot_eval_loss(title, loss_dict, loss_std_dict=None, alpha_fill=0.3, colors=
     i = 0
     for label, loss in loss_dict.items():
         time_list = list(range(len(loss)))
-        plt.plot(time_list, loss, linewidth=6, label=label, color=colors[i % len(colors)])
+        # plt.plot(time_list, loss, linewidth=6, label=label, color=colors[i % len(colors)])
+
+        sns.lineplot(x=time_list, y=loss, label=label) # , color=colors[i % len(colors)])
 
         # plt.annotate(str(round(loss[0], 4)), xy=(0, loss[0]), xytext=(-30, 20), textcoords="offset points", fontsize=20)
         # plt.annotate(str(round(loss[-1], 4)), xy=(len(loss)-1, loss[-1]), xytext=(-30, 20), textcoords="offset points", fontsize=20)
@@ -372,7 +376,7 @@ def render_o3d(geometry_list, axis_off=False, focus=True, views=[(90,-90),(0,-90
 
         for j in range(n_cols):
             ax = fig.add_subplot(n_rows, n_cols, i * n_cols + j + 1, projection='3d')
-            # ax.computed_zorder = False
+            ax.computed_zorder = False
             ax.view_init(*views[j])
             if j == n_cols - 1:
                 fig.colorbar(mappable=sm, ax=ax)
@@ -385,10 +389,10 @@ def render_o3d(geometry_list, axis_off=False, focus=True, views=[(90,-90),(0,-90
                 # Triangle Mesh
                 if type == o3d.geometry.Geometry.Type.TriangleMesh:
                     mf = pymeshfix.MeshFix(np.asarray(geometry_list[k].vertices), np.asarray(geometry_list[k].triangles))
-                    # mf.repair()
+                    mf.repair()
                     mesh = mf.mesh
                     vertices = np.asarray(mesh.points)
-                    triangles = np.asarray(mesh.faces)
+                    triangles = np.asarray(mesh.faces).reshape(mesh.n_faces, -1)[:, 1:]
                     ax.plot_trisurf(vertices[:, 0], vertices[:, 1], triangles=triangles, Z=vertices[:,2])
                     # ax.set_aspect('equal')
                 elif type == o3d.geometry.Geometry.Type.PointCloud:

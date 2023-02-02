@@ -92,6 +92,11 @@ class MPController(object):
             target_shape[type] = target_data[0]
 
         self.target_shape = target_shape
+        
+        if '3d' in args.target_shape_name:
+            self.is_3d = True
+        else:
+            self.is_3d = False
 
 
     def load_tool(self, tool_name='gripper_sym_rod'):
@@ -111,7 +116,7 @@ class MPController(object):
                     model_path_list.append(os.path.join(cd, '..', 'models', args.planner_type, tool_model_name))
             else:
                 model_path_list = [os.path.join(cd, '..', 'models', args.planner_type, tool_model_names)]
-        self.tool = Tool(args, tool_name, args.planner_type, plan_params[tool_name], model_path_list)
+        self.tool = Tool(args, tool_name, args.planner_type, plan_params[tool_name], model_path_list, is_3d=self.is_3d)
 
 
     def get_state_from_ros(self, ros_data_path):
@@ -143,8 +148,7 @@ class MPController(object):
     def control(self):
         if args.close_loop:
             ros_data_path = os.path.join(rollout_root, 'raw_data')
-            # args.env = 'hook'
-            state_init_dict = self.get_state_from_ros(args.env, ros_data_path)
+            state_init_dict = self.get_state_from_ros(ros_data_path)
         else:
             target_dir = os.path.join(cd, '..', 'target_shapes', args.target_shape_name)
 
@@ -216,7 +220,7 @@ class MPController(object):
         self.command_pub.publish(String(f'{command_time}.run'))
 
 
-    def plan(self, state_cur_dict, rollout_path, max_n_actions=5, pred_err_bar=0.02):
+    def plan(self, state_cur_dict, rollout_path, max_n_actions=5, pred_err_bar=0.015):
         global command_feedback
         best_param_seq, best_state_seq, best_info_dict = self.tool.rollout(
             state_cur_dict, self.target_shape, rollout_path, args.max_n_actions
@@ -243,8 +247,8 @@ class MPController(object):
 
                 command_feedback = 0
                 
-                print('Waiting for disturbance... Press enter when you finish...')
-                readchar.readkey()
+                # print('Waiting for disturbance... Press enter when you finish...')
+                # readchar.readkey()
                 
                 state_cur_dict = self.get_state_from_ros(ros_data_path)
 
@@ -255,13 +259,11 @@ class MPController(object):
 
                 if param_seq_pred.shape[0] < max_n_actions:
                     # TODO: Need to tune this number
-                    if pred_err > 0 and pred_err < pred_err_bar:
+                    if pred_err < pred_err_bar:
                         print(f"The prediction is good enough!")
-                        if act_end < best_param_seq.shape[0]:
-                            # move to the next action
-                            act_start = act_end
-                        else:
-                            break
+                    if pred_err > 0 and pred_err < pred_err_bar and act_end < best_param_seq.shape[0]:
+                        # move to the next action
+                        act_start = act_end
                     else:
                         # figure out a new solution
                         best_param_seq, best_state_seq, best_info_dict = self.tool.rollout(
