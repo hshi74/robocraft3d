@@ -1,77 +1,82 @@
-
-<img src='imgs/robocraft.gif' align="right" width=384>
-
-<br><br><br>
-
-# RoboCraft: Learning to See, Simulate, Shape Elasto-Plastic Object with Graph Networks
+# RoboCraft: Learning to see, simulate, and shape elasto-plastic objects in 3D with graph networks
 
 **RoboCraft: [Project](https://sites.google.com/view/robocraftplasticine/home) |  [Paper]()**
 
-<img src="xxx.jpg" width="800"/>
+## Overview
 
+**[Paper](https://doi.org/10.1177/02783649231219020)**
 
-If you use this code for your research, please cite:
-
-RoboCraft: Learning to See, Simulate, Shape Elasto-Plastic Object with Graph Networks<br>
-[Haochen Shi]()\*,  [Huazhe Xu](https://hxu.rocks)\*, [Yunzhu Li](https://people.csail.mit.edu/liyunzhu/), [Zhiao Huang](https://sites.google.com/view/zhiao-huang), [Jiajun Wu](https://jiajunwu.com/). In xxxx 2022. (* equal contributions) [[Bibtex]](https://hxu.rocks/robocraft/robocraft.txt)
-
+<img src="images/robocraft3d.gif" width="600">
 
 ## Prerequisites
-- Linux or macOS
+- Linux or macOS (Tested on Ubuntu 20.04)
 - Python 3
 - CPU or NVIDIA GPU + CUDA CuDNN
+- Conda
 
 ## Getting Started
-### Installation
 
-- Clone this repo:
+### Setup
 ```bash
-git clone https://github.com/hshi74/robocook.git
-cd RoboCraft
+# clone the repo
+git clone https://github.com/hshi74/RoboCraft.git
+
+# create the conda environment
 conda env create -f robocraft.yml
 conda activate robocraft
+
+# install requirements for the simulator
+pip install -e simulator
+
+# install pytorch
+pip install torch==1.12.0+cu113 torchvision==0.13.0+cu113 torchaudio==0.12.0 --extra-index-url https://download.pytorch.org/whl/cu113
+
+# add this line to your bashrc
+export PYTHONPATH="${PYTHONPATH}:/path/to/robocraft"
 ```
 
-- Install requirements for the simulator.
-  - For pip users, please type the command `cd simulator` and `pip install -e .`.
+### Generate Data
+See [the controller codebase of RoboCraft](https://github.com/hshi74/deformable_ros)
 
-- Go to the simulator dir
-  - `cd ./plb/algorithms`
+### For all the following bash or python scripts, you will need to modify certain hyperparameters (like directories) before you run them.
 
-- Add this line to your ~/.bashrc
-  - `export PYTHONPATH="${PYTHONPATH}:[path/to/robocook]"`
-
-### Data Generation
-- Run all the blocks in `test_tasks.ipynb`. We note that it is much easier to use ipython notebook when dealing with Taichi env for fast materialization.
-
-### Particle Sampling
-- run `python sample_data.py`
-
-### Prepare for Dynamics Model
-```bash
-cd ../../../dynamics
-bash scripts/utils/move_data.sh ngrip_fixed sample_ngrip_fixed_14-Feb-2022-21:24:27.516157
-```
+### Sample particles and build the dataset for the GNN
+1. `bash perception/scripts/run_sample.sh`.
+1. (Optional) There could be a tiny portion of problematic datapoints. If you want to manually check the sampling results and remove the problematic ones, 
+    1. Run `perception/scripts/inspect_perception.sh` to move all the visualizations into the same folder for your convenience
+    1. Manually go through all the videos and type the indices of problematic videos into `dump/perception/inspect/inspect.txt`
+    1. Run `perception/scripts/clean_perception.sh` to remove all the problemtaic ones.
+1. Run `percetion/scripts/make_dataset.py` to build the dataset for the GNN
 
 ### Train Dynamics Model
-Run `bash scripts/dynamics/train.sh`
+`bash dynamics/scripts/run_train.sh`
 
 ### Planning with the Learned Model
-Run `bash scripts/control/control.sh`
+`bash scripts/control/run_control.sh`
 
 ## Code structure
-The simulator folder contains the simulation environment we used for data collection and particle sampling. 
-The dynamics folder contains the code for learning the GNN and planning.
-The models folder contains the code for all the 3D printed gadgets.
-The franka_robot folder contains the code used for real world control.
+- `config/`: config files for perception, dyanmics, planning, and simulation
+- `dynamics/`: scripts to train and evaluate the GNN.
+- `geometries/`: the STL files for tools and assets and surface point cloud representations for tools (in the `.npy` files)
+- `models/`: a GNN checkpoint trained by us and its configurations (in the `.npy` file)
+- `perception/`: the perception module of RoboCraft
+- `planning/`: the planning module of RoboCraft
+- `simulator/`: the simulation environment [PlasticineLab](https://github.com/hzaskywalker/PlasticineLab)
+- `target_shapes/`: point clouds of some target shapes
+- `utils/`: utility and visualization functions
 
 ## Citation
-If you use this code for your research, please cite our papers.
+If you use the codebase in your research, please cite:
 ```
-@inproceedings{robocraft,
-  title={Learning to See, Simulate, Shape Elasto-Plastic Objects with Graph Networks},
-  author={xxxx},
-  booktitle={xxxx},
-  year={xxxx}
+@article{doi:10.1177/02783649231219020,
+  author={Haochen Shi and Huazhe Xu and Zhiao Huang and Yunzhu Li and Jiajun Wu},
+  title={RoboCraft: Learning to see, simulate, and shape elasto-plastic objects in 3D with graph networks},
+  journal={The International Journal of Robotics Research},
+  volume={0},
+  number={0},
+  pages={02783649231219020},
+  year={2023},
+  doi={10.1177/02783649231219020},
+  URL={https://doi.org/10.1177/02783649231219020}
 }
 ```
