@@ -1,7 +1,5 @@
 # RoboCraft: Learning to see, simulate, and shape elasto-plastic objects in 3D with graph networks
 
-**RoboCraft: [Project](https://sites.google.com/view/robocraftplasticine/home) |  [Paper]()**
-
 ## Overview
 
 **[Paper](https://doi.org/10.1177/02783649231219020)**
@@ -19,7 +17,7 @@
 ### Setup
 ```bash
 # clone the repo
-git clone https://github.com/hshi74/RoboCraft.git
+git clone https://github.com/hshi74/robocraft3d.git
 
 # create the conda environment
 conda env create -f robocraft.yml
@@ -32,7 +30,7 @@ pip install -e simulator
 pip install torch==1.12.0+cu113 torchvision==0.13.0+cu113 torchaudio==0.12.0 --extra-index-url https://download.pytorch.org/whl/cu113
 
 # add this line to your bashrc
-export PYTHONPATH="${PYTHONPATH}:/path/to/robocraft"
+export PYTHONPATH="${PYTHONPATH}:/path/to/robocraft3d"
 ```
 
 ### Generate Data
@@ -52,7 +50,7 @@ See [the controller codebase of RoboCraft](https://github.com/hshi74/deformable_
 `bash dynamics/scripts/run_train.sh`
 
 ### Planning with the Learned Model
-`bash scripts/control/run_control.sh`
+`bash planning/scripts/run_control.sh`
 
 ## Code structure
 - `config/`: config files for perception, dyanmics, planning, and simulation
